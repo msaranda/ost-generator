@@ -1,11 +1,14 @@
 import { useState, useRef } from 'react';
-import { Upload, Download, ChevronDown, HelpCircle, Image } from 'lucide-react';
+import { Upload, Download, ChevronDown, HelpCircle, Image, Share2, Check, AlertCircle } from 'lucide-react';
+import { TreeState } from '../types';
+import { generateShareableUrl } from '../utils/urlSharing';
 
 interface HeaderProps {
   onImport: (file: File) => void;
   onExportJSON: () => void;
   onExportImage: () => void;
   isExporting?: boolean;
+  treeData: TreeState;
 }
 
 export default function Header({
@@ -13,10 +16,25 @@ export default function Header({
   onExportJSON,
   onExportImage,
   isExporting = false,
+  treeData,
 }: HeaderProps) {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [shareStatus, setShareStatus] = useState<'idle' | 'copied' | 'error'>('idle');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleShare = async () => {
+    try {
+      const shareUrl = generateShareableUrl(treeData);
+      await navigator.clipboard.writeText(shareUrl);
+      setShareStatus('copied');
+      setTimeout(() => setShareStatus('idle'), 2000);
+    } catch (error) {
+      console.error('Share failed:', error);
+      setShareStatus('error');
+      setTimeout(() => setShareStatus('idle'), 3000);
+    }
+  };
 
   const handleImportClick = () => {
     fileInputRef.current?.click();
@@ -112,6 +130,36 @@ export default function Header({
             </>
           )}
         </div>
+
+        {/* Share */}
+        <button
+          onClick={handleShare}
+          className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+            shareStatus === 'copied'
+              ? 'bg-green-600 text-white'
+              : shareStatus === 'error'
+              ? 'bg-red-600 text-white'
+              : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+          }`}
+          title="Copy shareable link"
+        >
+          {shareStatus === 'copied' ? (
+            <>
+              <Check size={16} />
+              Copied!
+            </>
+          ) : shareStatus === 'error' ? (
+            <>
+              <AlertCircle size={16} />
+              Failed
+            </>
+          ) : (
+            <>
+              <Share2 size={16} />
+              Share
+            </>
+          )}
+        </button>
 
         {/* Help */}
         <div className="relative">

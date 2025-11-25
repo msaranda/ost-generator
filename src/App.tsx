@@ -4,6 +4,7 @@ import { useAutoSave, getAutosave, clearAutosave } from './hooks/useAutoSave';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { validateTreeJSON, parseValidatedData } from './utils/validation';
 import { exportToJSON, exportToJPG, readJSONFile } from './utils/exportHandlers';
+import { hasSharedTree, loadTreeFromUrl, clearTreeFromUrl } from './utils/urlSharing';
 import { ExportData, ValidationResult, TreeState } from './types';
 
 import Header from './components/Header';
@@ -53,8 +54,26 @@ function App() {
   // Auto-save
   const { lastSaved } = useAutoSave(tree);
 
-  // Check for autosave on mount
+  // Check for shared tree in URL or autosave on mount
   useEffect(() => {
+    // Priority: URL tree > autosave > default tree
+    if (hasSharedTree()) {
+      try {
+        const sharedTree = loadTreeFromUrl();
+        if (sharedTree) {
+          importTree(sharedTree);
+          // Clear the URL parameter after loading to allow autosave to work
+          clearTreeFromUrl();
+          return; // Skip autosave check if URL tree was loaded
+        }
+      } catch (error) {
+        console.error('Failed to load shared tree from URL:', error);
+        alert('Unable to load shared tree. The link may be corrupted.');
+        clearTreeFromUrl();
+      }
+    }
+
+    // Fall back to autosave if no URL tree
     const autosave = getAutosave();
     if (autosave && autosave.savedAt) {
       setRestoreSavedAt(autosave.savedAt);
@@ -65,7 +84,7 @@ function App() {
       });
       setShowRestoreModal(true);
     }
-  }, []);
+  }, [importTree]);
 
   // Handle restore
   const handleRestore = useCallback(() => {
@@ -151,7 +170,7 @@ function App() {
   // Get delete modal data
   const deleteNodeData = pendingDeleteId ? tree.nodes[pendingDeleteId] : null;
   const deleteChildCount = deleteNodeData
-    ? countDescendants(pendingDeleteId, tree.nodes)
+    ? countDescendants(pendingDeleteId!, tree.nodes)
     : 0;
 
   // Zoom controls
@@ -205,6 +224,7 @@ function App() {
         onExportJSON={handleExportJSON}
         onExportImage={handleExportImage}
         isExporting={isExporting}
+        treeData={tree}
       />
 
       <main className="flex-1 relative overflow-hidden">
