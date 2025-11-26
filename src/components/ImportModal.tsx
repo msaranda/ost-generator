@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AlertCircle, CheckCircle, X } from 'lucide-react';
 import { ValidationResult } from '../types';
 
@@ -19,20 +19,43 @@ export default function ImportModal({
 }: ImportModalProps) {
   const [isVisible, setIsVisible] = useState(false);
 
+  const isValid = validationResult?.valid ?? false;
+
+  const handleClose = useCallback(() => {
+    setIsVisible(false);
+    setTimeout(onClose, 200);
+  }, [onClose]);
+
+  const handleConfirm = useCallback(() => {
+    if (isValid) {
+      onConfirm();
+      handleClose();
+    }
+  }, [isValid, onConfirm, handleClose]);
+
   useEffect(() => {
     if (isOpen) {
       setIsVisible(true);
     }
   }, [isOpen]);
 
-  const handleClose = () => {
-    setIsVisible(false);
-    setTimeout(onClose, 200);
-  };
+  // Handle keyboard events: ENTER to confirm (if valid), ESCAPE to cancel
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && isValid) {
+        e.preventDefault();
+        handleConfirm();
+      }
+      // Note: ESCAPE is handled globally in useKeyboardShortcuts
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isValid, handleConfirm]);
 
   if (!isOpen) return null;
-
-  const isValid = validationResult?.valid ?? false;
 
   return (
     <div
@@ -122,10 +145,7 @@ export default function ImportModal({
           </button>
           {isValid && (
             <button
-              onClick={() => {
-                onConfirm();
-                handleClose();
-              }}
+              onClick={handleConfirm}
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
             >
               Import

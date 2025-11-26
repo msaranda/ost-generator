@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AlertTriangle, Download, Trash2, X } from 'lucide-react';
 import { Session, formatSaveDate } from '../hooks/useAutoSave';
 import { exportSessionToJSON } from '../utils/exportHandlers';
@@ -20,29 +20,45 @@ export default function SessionLimitModal({
 }: SessionLimitModalProps) {
   const [isVisible, setIsVisible] = useState(false);
 
+  const handleClose = useCallback(() => {
+    setIsVisible(false);
+    setTimeout(onCancel, 200);
+  }, [onCancel]);
+
+  const handleDownloadAndRemove = useCallback(() => {
+    if (sessionToRemove) {
+      exportSessionToJSON(sessionToRemove);
+    }
+    setIsVisible(false);
+    setTimeout(onDownloadAndRemove, 200);
+  }, [sessionToRemove, onDownloadAndRemove]);
+
+  const handleRemove = useCallback(() => {
+    setIsVisible(false);
+    setTimeout(onRemove, 200);
+  }, [onRemove]);
+
   useEffect(() => {
     if (isOpen) {
       setIsVisible(true);
     }
   }, [isOpen]);
 
-  const handleClose = () => {
-    setIsVisible(false);
-    setTimeout(onCancel, 200);
-  };
+  // Handle keyboard events: ENTER to download & remove (primary action), ESCAPE to cancel
+  useEffect(() => {
+    if (!isOpen || !sessionToRemove) return;
 
-  const handleDownloadAndRemove = () => {
-    if (sessionToRemove) {
-      exportSessionToJSON(sessionToRemove);
-    }
-    setIsVisible(false);
-    setTimeout(onDownloadAndRemove, 200);
-  };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleDownloadAndRemove();
+      }
+      // Note: ESCAPE is handled globally in useKeyboardShortcuts
+    };
 
-  const handleRemove = () => {
-    setIsVisible(false);
-    setTimeout(onRemove, 200);
-  };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, sessionToRemove, handleDownloadAndRemove]);
 
   if (!isOpen || !sessionToRemove) return null;
 

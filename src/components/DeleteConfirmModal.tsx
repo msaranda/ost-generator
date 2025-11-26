@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 
 interface DeleteConfirmModalProps {
@@ -18,16 +18,37 @@ export default function DeleteConfirmModal({
 }: DeleteConfirmModalProps) {
   const [isVisible, setIsVisible] = useState(false);
 
+  const handleClose = useCallback(() => {
+    setIsVisible(false);
+    setTimeout(onClose, 200);
+  }, [onClose]);
+
+  const handleConfirm = useCallback(() => {
+    onConfirm();
+    handleClose();
+  }, [onConfirm, handleClose]);
+
   useEffect(() => {
     if (isOpen) {
       setIsVisible(true);
     }
   }, [isOpen]);
 
-  const handleClose = () => {
-    setIsVisible(false);
-    setTimeout(onClose, 200);
-  };
+  // Handle keyboard events: ENTER to confirm, ESCAPE to cancel
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleConfirm();
+      }
+      // Note: ESCAPE is handled globally in useKeyboardShortcuts
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, handleConfirm]);
 
   if (!isOpen) return null;
 
@@ -95,10 +116,7 @@ export default function DeleteConfirmModal({
             Cancel
           </button>
           <button
-            onClick={() => {
-              onConfirm();
-              handleClose();
-            }}
+            onClick={handleConfirm}
             className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
           >
             Delete

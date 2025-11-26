@@ -1,4 +1,5 @@
 import { useEffect, useCallback } from 'react';
+import { TreeState } from '../types';
 
 interface KeyboardShortcutHandlers {
   onAddChild?: () => void;
@@ -7,8 +8,42 @@ interface KeyboardShortcutHandlers {
   onSave?: () => void;
   onUndo?: () => void;
   onRedo?: () => void;
+  onEnterEdit?: () => void;
+  onSelectNode?: (nodeId: string) => void;
+  onCloseModal?: () => void;
+  hasOpenModal: boolean;
+  getNearestNodeToCursor?: () => string | null;
+  tree: TreeState;
   selectedNodeId: string | null;
   isEditing: boolean;
+}
+
+// Navigation helper functions
+function getParentNodeId(nodeId: string, tree: TreeState): string | null {
+  const node = tree.nodes[nodeId];
+  return node?.parentId || null;
+}
+
+function getFirstChildId(nodeId: string, tree: TreeState): string | null {
+  const node = tree.nodes[nodeId];
+  return node?.children[0] || null;
+}
+
+function getSiblingId(nodeId: string, tree: TreeState, direction: 'prev' | 'next'): string | null {
+  const node = tree.nodes[nodeId];
+  if (!node?.parentId) return null;
+  
+  const parent = tree.nodes[node.parentId];
+  if (!parent) return null;
+  
+  const siblingIndex = parent.children.indexOf(nodeId);
+  if (siblingIndex === -1) return null;
+  
+  if (direction === 'prev') {
+    return siblingIndex > 0 ? parent.children[siblingIndex - 1] : null;
+  } else {
+    return siblingIndex < parent.children.length - 1 ? parent.children[siblingIndex + 1] : null;
+  }
 }
 
 export function useKeyboardShortcuts({
@@ -18,6 +53,12 @@ export function useKeyboardShortcuts({
   onSave,
   onUndo,
   onRedo,
+  onEnterEdit,
+  onSelectNode,
+  onCloseModal,
+  hasOpenModal,
+  getNearestNodeToCursor,
+  tree,
   selectedNodeId,
   isEditing,
 }: KeyboardShortcutHandlers) {
@@ -26,6 +67,13 @@ export function useKeyboardShortcuts({
       // Check for modifier keys
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const cmdOrCtrl = isMac ? event.metaKey : event.ctrlKey;
+
+      // Priority 1: Handle modal ESCAPE - close any open modal
+      if (event.key === 'Escape' && hasOpenModal && onCloseModal) {
+        event.preventDefault();
+        onCloseModal();
+        return;
+      }
 
       // When editing text, only handle specific shortcuts and let everything else pass through
       if (isEditing) {
@@ -42,12 +90,8 @@ export function useKeyboardShortcuts({
           return; // Let browser handle text redo
         }
         
-        // Escape exits editing mode
-        if (event.key === 'Escape' && onEscape) {
-          onEscape();
-        }
-        
-        // All other keys should work normally in text editing (Delete, Backspace, arrows, etc.)
+        // Escape exits editing mode (handled by StickyNote component directly)
+        // Don't call onEscape here as it would also deselect the node
         return;
       }
 
@@ -89,37 +133,99 @@ export function useKeyboardShortcuts({
         return;
       }
 
+      const key = event.key.toLowerCase();
+
+      // Arrow keys: if no node selected, select nearest node to cursor
+      if (!selectedNodeId && ['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+        event.preventDefault();
+        if (onSelectNode && getNearestNodeToCursor) {
+          const nearestNodeId = getNearestNodeToCursor();
+          if (nearestNodeId) {
+            onSelectNode(nearestNodeId);
+          }
+        }
+        return;
+      }
+
       // Only handle these shortcuts when a node is selected
       if (!selectedNodeId) return;
 
-      switch (event.key) {
-        case 'Tab':
+      switch (key) {
+        // A: Add child node
+        case 'a':
           event.preventDefault();
           if (onAddChild) {
             onAddChild();
           }
           break;
 
-        case 'Delete':
-        case 'Backspace':
-          // Only delete on Delete key, not Backspace (to avoid accidental deletion)
-          if (event.key === 'Delete') {
-            event.preventDefault();
-            if (onDelete) {
-              onDelete();
-            }
+        // D: Delete node
+        case 'd':
+          event.preventDefault();
+          if (onDelete) {
+            onDelete();
           }
           break;
 
-        case 'Escape':
+        // Enter: Enter edit mode
+        case 'enter':
+          event.preventDefault();
+          if (onEnterEdit) {
+            onEnterEdit();
+          }
+          break;
+
+        // Escape: Deselect
+        case 'escape':
           event.preventDefault();
           if (onEscape) {
             onEscape();
           }
           break;
+
+        // Arrow keys for navigation
+        case 'arrowup':
+          event.preventDefault();
+          if (onSelectNode) {
+            const parentId = getParentNodeId(selectedNodeId, tree);
+            if (parentId) {
+              onSelectNode(parentId);
+            }
+          }
+          break;
+
+        case 'arrowdown':
+          event.preventDefault();
+          if (onSelectNode) {
+            const childId = getFirstChildId(selectedNodeId, tree);
+            if (childId) {
+              onSelectNode(childId);
+            }
+          }
+          break;
+
+        case 'arrowleft':
+          event.preventDefault();
+          if (onSelectNode) {
+            const prevSiblingId = getSiblingId(selectedNodeId, tree, 'prev');
+            if (prevSiblingId) {
+              onSelectNode(prevSiblingId);
+            }
+          }
+          break;
+
+        case 'arrowright':
+          event.preventDefault();
+          if (onSelectNode) {
+            const nextSiblingId = getSiblingId(selectedNodeId, tree, 'next');
+            if (nextSiblingId) {
+              onSelectNode(nextSiblingId);
+            }
+          }
+          break;
       }
     },
-    [isEditing, selectedNodeId, onAddChild, onDelete, onEscape, onSave, onUndo, onRedo]
+    [isEditing, selectedNodeId, tree, onAddChild, onDelete, onEscape, onSave, onUndo, onRedo, onEnterEdit, onSelectNode, onCloseModal, hasOpenModal, getNearestNodeToCursor]
   );
 
   useEffect(() => {
@@ -130,4 +236,3 @@ export function useKeyboardShortcuts({
     };
   }, [handleKeyDown]);
 }
-

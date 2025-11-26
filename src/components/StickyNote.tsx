@@ -10,19 +10,33 @@ interface StickyNoteData extends OSTNode {
   onAddChild: (parentId: string) => void;
   onSelect: (id: string | null) => void;
   onEditingChange: (isEditing: boolean) => void;
+  onTextSaved?: () => void;
   isSelected: boolean;
   isReadOnly?: boolean;
+  shouldTriggerEdit?: boolean;
+  onClearTriggerEdit?: () => void;
 }
 
 const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(data.content);
+  const [originalContent, setOriginalContent] = useState(data.content);
   const [isHovered, setIsHovered] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const size = NODE_SIZES[data.type as NodeType] || NODE_SIZES.opportunity;
   const isRoot = data.parentId === null;
   const isReadOnly = data.isReadOnly ?? false;
+
+  // Cleanup save timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Update edit content when data changes
   useEffect(() => {
@@ -39,11 +53,53 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
     }
   }, [isEditing]);
 
+  // Handle trigger edit from keyboard shortcut (Enter key)
+  useEffect(() => {
+    if (data.shouldTriggerEdit && !isReadOnly && !isEditing) {
+      setOriginalContent(data.content); // Store original before editing
+      setIsEditing(true);
+      data.onEditingChange(true);
+      // Clear the trigger after handling
+      if (data.onClearTriggerEdit) {
+        data.onClearTriggerEdit();
+      }
+    }
+  }, [data.shouldTriggerEdit, isReadOnly, isEditing, data]);
+
+  // Handle text change with debounced save
+  const handleTextChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newContent = e.target.value;
+    setEditContent(newContent);
+    
+    // Clear any pending save
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    // Debounce save - save after 500ms of no typing
+    saveTimeoutRef.current = setTimeout(() => {
+      if (newContent.trim() !== data.content && data.onTextSaved) {
+        data.onUpdate(data.id, newContent.trim() || data.content);
+        data.onTextSaved();
+      }
+    }, 500);
+  }, [data]);
+
   const handleBlur = useCallback(() => {
+    // Clear any pending debounced save
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    
     setIsEditing(false);
     data.onEditingChange(false);
     if (editContent.trim() !== data.content) {
       data.onUpdate(data.id, editContent.trim() || data.content);
+      // Notify parent that text was saved
+      if (data.onTextSaved) {
+        data.onTextSaved();
+      }
     }
   }, [editContent, data]);
 
@@ -56,11 +112,17 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
       handleBlur();
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      setEditContent(data.content);
+      // Clear any pending debounced save to prevent saving intermediate changes
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+      // Revert to original content (before editing started)
+      setEditContent(originalContent);
       setIsEditing(false);
       data.onEditingChange(false);
     }
-  }, [handleBlur, data]);
+  }, [handleBlur, data, originalContent]);
 
   const handleDelete = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -86,11 +148,12 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
   const handleContentClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     data.onSelect(data.id);
-    if (!isReadOnly) {
+    if (!isReadOnly && !isEditing) {
+      setOriginalContent(data.content); // Store original before editing
       setIsEditing(true);
       data.onEditingChange(true);
     }
-  }, [data, isReadOnly]);
+  }, [data, isReadOnly, isEditing]);
 
   // Get styling based on node type
   const getBackgroundColor = () => {
@@ -188,7 +251,7 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
           <textarea
             ref={textareaRef}
             value={editContent}
-            onChange={(e) => setEditContent(e.target.value)}
+            onChange={handleTextChange}
             onBlur={handleBlur}
             onKeyDown={handleKeyDown}
             onClick={(e) => e.stopPropagation()}

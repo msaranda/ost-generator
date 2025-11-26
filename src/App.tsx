@@ -36,6 +36,7 @@ function App() {
   const [layoutMode, setLayoutMode] = useState<'auto' | 'manual'>('auto');
   const [isReadOnly, setIsReadOnly] = useState(false);
   const [title, setTitle] = useState('Untitled');
+  const [triggerEditNodeId, setTriggerEditNodeId] = useState<string | null>(null);
 
   // Modal states
   const [showImportModal, setShowImportModal] = useState(false);
@@ -60,7 +61,16 @@ function App() {
     dismissPendingRemoval,
     confirmRemoval,
     updateSessionTitle,
+    saveNow,
+    clearCurrentSession,
   } = useAutoSave(tree, !isReadOnly, title);
+
+  // Handle text saved in node - trigger immediate save
+  const handleTextSaved = useCallback(() => {
+    if (!isReadOnly) {
+      saveNow();
+    }
+  }, [isReadOnly, saveNow]);
 
   // Check for shared tree in URL or auto-restore latest session on mount
   useEffect(() => {
@@ -149,11 +159,13 @@ function App() {
 
   // Handle editing a shared tree (save as new session)
   const handleEditSharedTree = useCallback(() => {
+    // Clear current session to prevent initialization effect from restoring old session
+    clearCurrentSession();
     setIsReadOnly(false);
     setTitle('Shared Tree (Copy)');
     // Create a new session for this shared tree
     setTimeout(() => createNewSession(true), 100);
-  }, [createNewSession]);
+  }, [clearCurrentSession, createNewSession]);
 
   // Handle import
   const handleImport = useCallback(async (file: File) => {
@@ -264,6 +276,38 @@ function App() {
     });
   }, [recalculateLayout]);
 
+  // Handle entering edit mode from keyboard
+  const handleEnterEditMode = useCallback(() => {
+    if (!isReadOnly && tree.selectedNodeId) {
+      setTriggerEditNodeId(tree.selectedNodeId);
+    }
+  }, [isReadOnly, tree.selectedNodeId]);
+
+  // Clear triggerEditNodeId after it's been consumed
+  const handleClearTriggerEdit = useCallback(() => {
+    setTriggerEditNodeId(null);
+  }, []);
+
+  // Track if any modal is open
+  const hasOpenModal = showImportModal || showDeleteModal || !!pendingSessionToRemove;
+
+  // Handle closing the active modal
+  const handleCloseModal = useCallback(() => {
+    if (showImportModal) {
+      setShowImportModal(false);
+    } else if (showDeleteModal) {
+      setShowDeleteModal(false);
+      setPendingDeleteId(null);
+    } else if (pendingSessionToRemove) {
+      dismissPendingRemoval();
+    }
+  }, [showImportModal, showDeleteModal, pendingSessionToRemove, dismissPendingRemoval]);
+
+  // Get nearest node to cursor for arrow key navigation
+  const getNearestNodeToCursor = useCallback(() => {
+    return canvasRef.current?.getNearestNodeToCursor() || null;
+  }, []);
+
   // Keyboard shortcuts (disabled in read-only mode for mutations)
   useKeyboardShortcuts({
     onAddChild: (!isReadOnly && tree.selectedNodeId)
@@ -279,6 +323,12 @@ function App() {
     onSave: handleExportJSON,
     onUndo: isReadOnly ? undefined : undo,
     onRedo: isReadOnly ? undefined : redo,
+    onEnterEdit: handleEnterEditMode,
+    onSelectNode: selectNode,
+    onCloseModal: handleCloseModal,
+    hasOpenModal,
+    getNearestNodeToCursor,
+    tree,
     selectedNodeId: tree.selectedNodeId,
     isEditing,
   });
@@ -313,10 +363,13 @@ function App() {
           onRequestDelete={handleRequestDelete}
           onMoveNode={isReadOnly ? () => {} : moveNode}
           onEditingChange={setIsEditing}
+          onTextSaved={handleTextSaved}
           zoom={zoom}
           onZoomChange={setZoom}
           layoutMode={layoutMode}
           isReadOnly={isReadOnly}
+          triggerEditNodeId={triggerEditNodeId}
+          onClearTriggerEdit={handleClearTriggerEdit}
         />
       </main>
 

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { 
   Upload, Download, ChevronDown, HelpCircle, Image, Share2, Check, 
-  AlertCircle, FilePlus, Clock, Eye, Edit3, AlertTriangle, X
+  AlertCircle, FilePlus, Clock, Eye, Edit3, AlertTriangle, X, Pencil
 } from 'lucide-react';
 import { TreeState } from '../types';
 import { generateShareableUrl } from '../utils/urlSharing';
@@ -131,8 +131,10 @@ export default function Header({
   };
 
   const shortcuts = [
-    { key: 'Tab', action: 'Add child to selected node' },
-    { key: 'Delete', action: 'Delete selected node' },
+    { key: 'A', action: 'Add child to selected node' },
+    { key: 'D', action: 'Delete selected node' },
+    { key: 'Enter', action: 'Edit selected node' },
+    { key: '↑↓←→', action: 'Navigate between nodes' },
     { key: 'Escape', action: 'Deselect / Cancel' },
     { key: 'Ctrl/⌘ + S', action: 'Export JSON' },
     { key: 'Ctrl/⌘ + Z', action: 'Undo' },
@@ -177,8 +179,8 @@ export default function Header({
       <header className="flex items-center justify-between h-14 px-4 bg-white border-b border-gray-200 shadow-sm z-20">
         {/* Left: Logo + Title + Badge */}
         <div className="flex items-center gap-3 min-w-0 flex-1">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-            <span className="text-white font-bold text-sm">O</span>
+          <div className="px-2 py-1 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+            <span className="text-white font-bold text-sm">OST</span>
           </div>
           
           {/* Title */}
@@ -197,12 +199,15 @@ export default function Header({
             ) : (
               <button
                 onClick={() => !isReadOnly && setIsEditingTitle(true)}
-                className={`text-lg font-semibold text-gray-800 truncate max-w-[250px] ${
+                className={`group flex items-center gap-1.5 text-lg font-semibold text-gray-800 truncate max-w-[250px] ${
                   isReadOnly ? 'cursor-default' : 'hover:text-blue-600 cursor-text'
                 }`}
                 title={isReadOnly ? title : 'Click to edit title'}
               >
                 {title || 'Untitled'}
+                {!isReadOnly && (
+                  <Pencil size={14} className="text-gray-400 group-hover:text-blue-500 transition-colors" />
+                )}
               </button>
             )}
             

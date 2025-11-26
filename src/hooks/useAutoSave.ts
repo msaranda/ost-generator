@@ -146,6 +146,8 @@ export function useAutoSave(
   const [pendingSessionToRemove, setPendingSessionToRemove] = useState<Session | null>(null);
   const treeRef = useRef(tree);
   const titleRef = useRef(title);
+  // Track if we're pending a new session creation (to skip initialization)
+  const pendingNewSessionRef = useRef(false);
   
   // Keep refs updated
   useEffect(() => {
@@ -160,6 +162,11 @@ export function useAutoSave(
   useEffect(() => {
     if (!enabled) return;
     
+    // Skip initialization if we're about to create a new session
+    if (pendingNewSessionRef.current) {
+      return;
+    }
+    
     const data = getSessions();
     if (data.activeSessionId) {
       setCurrentSessionId(data.activeSessionId);
@@ -172,6 +179,12 @@ export function useAutoSave(
       }
     }
   }, [enabled]);
+  
+  // Clear current session (used when loading shared trees)
+  const clearCurrentSession = useCallback(() => {
+    setCurrentSessionId(null);
+    pendingNewSessionRef.current = true;
+  }, []);
 
   const saveTree = useCallback((createNew: boolean = false, forceRemove: boolean = false): string | null => {
     if (!enabled) return null;
@@ -240,7 +253,10 @@ export function useAutoSave(
 
   // Create a new session (for "New" button)
   const createNewSession = useCallback((forceRemove: boolean = false) => {
-    return saveTree(true, forceRemove);
+    const result = saveTree(true, forceRemove);
+    // Clear the pending flag after creating the session
+    pendingNewSessionRef.current = false;
+    return result;
   }, [saveTree]);
 
   // Switch to a different session
@@ -317,5 +333,6 @@ export function useAutoSave(
     dismissPendingRemoval,
     confirmRemoval,
     updateSessionTitle,
+    clearCurrentSession,
   };
 }

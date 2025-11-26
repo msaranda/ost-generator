@@ -108,26 +108,50 @@ export async function exportToJPG(
       throw new Error('Could not find React Flow viewport');
     }
 
-    // Get the current transform
+    // Get the current transform to restore later
     const originalTransform = viewport.style.transform;
     
-    // Calculate new transform to show all nodes
-    viewport.style.transform = `translate(${-bbox.minX + padding}px, ${-bbox.minY + padding}px) scale(1)`;
+    // Create a temporary wrapper to capture
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: ${bbox.width + padding * 2}px;
+      height: ${bbox.height + padding * 2}px;
+      background: #ffffff;
+      z-index: -9999;
+      overflow: hidden;
+    `;
+    
+    // Clone the viewport
+    const viewportClone = viewport.cloneNode(true) as HTMLElement;
+    
+    // Set the transform to position nodes correctly in the capture area
+    viewportClone.style.transform = `translate(${-bbox.minX + padding}px, ${-bbox.minY + padding}px) scale(1)`;
+    
+    wrapper.appendChild(viewportClone);
+    document.body.appendChild(wrapper);
 
-    // Wait for next frame to ensure transform is applied
-    await new Promise(resolve => requestAnimationFrame(resolve));
+    // Wait for rendering to complete
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     // Capture with html2canvas
-    const canvas = await html2canvas(canvasElement, {
+    const canvas = await html2canvas(wrapper, {
       backgroundColor: '#ffffff',
       scale: 2, // Higher resolution
       width: bbox.width + padding * 2,
       height: bbox.height + padding * 2,
       useCORS: true,
       logging: false,
+      allowTaint: true,
+      foreignObjectRendering: true,
     });
 
-    // Restore original transform
+    // Clean up the temporary wrapper
+    document.body.removeChild(wrapper);
+
+    // Restore original transform (should still be intact, but just in case)
     viewport.style.transform = originalTransform;
 
     // Convert to blob and download
