@@ -18,7 +18,7 @@ export interface UseTextEditorReturn {
 }
 
 interface UseTextEditorOptions {
-  tree: TreeState;
+  tree?: TreeState;
   onTreeUpdate: (tree: TreeState) => void;
   isReadOnly: boolean;
   debounceMs?: number;
@@ -32,7 +32,6 @@ interface UseTextEditorOptions {
  * and coordinates text changes with tree updates.
  */
 export function useTextEditor({
-  tree,
   onTreeUpdate,
   isReadOnly,
   debounceMs = 300,
@@ -43,7 +42,7 @@ export function useTextEditor({
   const [cursorPosition, setCursorPosition] = useState<CursorPosition>({ line: 1, column: 0 });
 
   // Refs to manage debouncing and prevent parsing loops
-  const parseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const parseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSerializingRef = useRef(false);
   const lastParsedTextRef = useRef('');
 

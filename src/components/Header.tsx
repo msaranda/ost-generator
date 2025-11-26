@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { 
   Upload, Download, ChevronDown, HelpCircle, Image, Share2, Check, 
-  AlertCircle, FilePlus, Clock, Eye, Edit3, AlertTriangle, X, Pencil
+  AlertCircle, FilePlus, Clock, Eye, Edit3, AlertTriangle, X, Pencil, FileText
 } from 'lucide-react';
 import { TreeState } from '../types';
 import { generateShareableUrl } from '../utils/urlSharing';
@@ -24,6 +24,8 @@ interface HeaderProps {
   onTitleChange: (title: string) => void;
   lastSaved: Date | null;
   onEditSharedTree?: () => void;
+  showTextEditor?: boolean;
+  onToggleTextEditor?: () => void;
 }
 
 export default function Header({
@@ -41,6 +43,8 @@ export default function Header({
   onTitleChange,
   lastSaved,
   onEditSharedTree,
+  showTextEditor = false,
+  onToggleTextEditor,
 }: HeaderProps) {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -306,6 +310,22 @@ export default function Header({
 
           {/* Divider */}
           <div className="w-px h-6 bg-gray-200" />
+
+          {/* Text Editor Toggle */}
+          {onToggleTextEditor && (
+            <button
+              onClick={onToggleTextEditor}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-lg transition-colors ${
+                showTextEditor
+                  ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                  : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
+              }`}
+              title={showTextEditor ? 'Hide text editor' : 'Show text editor'}
+            >
+              <FileText size={16} />
+              <span className="hidden sm:inline">Text</span>
+            </button>
+          )}
 
           {/* Import */}
           <input

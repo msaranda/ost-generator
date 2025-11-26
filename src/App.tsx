@@ -10,6 +10,7 @@ import { ExportData, ValidationResult } from './types';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import OSTCanvas, { OSTCanvasHandle } from './components/OSTCanvas';
+import TextEditorPanel from './components/TextEditorPanel';
 import ImportModal from './components/ImportModal';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
 import SessionLimitModal from './components/SessionLimitModal';
@@ -37,6 +38,7 @@ function App() {
   const [isReadOnly, setIsReadOnly] = useState(false);
   const [title, setTitle] = useState('Untitled');
   const [triggerEditNodeId, setTriggerEditNodeId] = useState<string | null>(null);
+  const [showTextEditor, setShowTextEditor] = useState(false);
 
   // Modal states
   const [showImportModal, setShowImportModal] = useState(false);
@@ -351,27 +353,41 @@ function App() {
         onTitleChange={handleTitleChange}
         lastSaved={lastSaved}
         onEditSharedTree={isReadOnly ? handleEditSharedTree : undefined}
+        showTextEditor={showTextEditor}
+        onToggleTextEditor={() => setShowTextEditor(!showTextEditor)}
       />
 
-      <main className="flex-1 relative overflow-hidden">
-        <OSTCanvas
-          ref={canvasRef}
+      <main className="flex-1 relative overflow-hidden flex flex-row">
+        <TextEditorPanel
           tree={tree}
-          onUpdateNode={isReadOnly ? () => {} : updateNode}
-          onDeleteNode={isReadOnly ? () => {} : deleteNode}
-          onAddChild={isReadOnly ? () => {} : addNode}
-          onSelectNode={selectNode}
-          onRequestDelete={handleRequestDelete}
-          onMoveNode={isReadOnly ? () => {} : moveNode}
-          onEditingChange={setIsEditing}
-          onTextSaved={handleTextSaved}
-          zoom={zoom}
-          onZoomChange={setZoom}
-          layoutMode={layoutMode}
+          isVisible={showTextEditor}
           isReadOnly={isReadOnly}
-          triggerEditNodeId={triggerEditNodeId}
-          onClearTriggerEdit={handleClearTriggerEdit}
+          onTreeUpdate={importTree}
+          selectedNodeId={tree.selectedNodeId}
+          onSelectNode={selectNode}
+          onClose={() => setShowTextEditor(false)}
+          onRecalculateLayout={recalculateLayout}
         />
+        <div className="flex-1 relative overflow-hidden">
+          <OSTCanvas
+            ref={canvasRef}
+            tree={tree}
+            onUpdateNode={isReadOnly ? () => {} : updateNode}
+            onDeleteNode={isReadOnly ? () => {} : deleteNode}
+            onAddChild={isReadOnly ? () => {} : addNode}
+            onSelectNode={selectNode}
+            onRequestDelete={handleRequestDelete}
+            onMoveNode={isReadOnly ? () => {} : moveNode}
+            onEditingChange={setIsEditing}
+            onTextSaved={handleTextSaved}
+            zoom={zoom}
+            onZoomChange={setZoom}
+            layoutMode={layoutMode}
+            isReadOnly={isReadOnly}
+            triggerEditNodeId={triggerEditNodeId}
+            onClearTriggerEdit={handleClearTriggerEdit}
+          />
+        </div>
       </main>
 
       <Footer
