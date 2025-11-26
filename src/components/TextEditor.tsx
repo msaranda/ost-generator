@@ -1,6 +1,7 @@
 import { useRef, useCallback, useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight, AlertCircle, AlertTriangle } from 'lucide-react';
 import { ValidationError } from '../utils/textParser';
+import { useTextEditorShortcuts } from '../hooks/useTextEditorShortcuts';
 
 interface CursorPosition {
   line: number;
@@ -59,6 +60,7 @@ export default function TextEditor({
   onLineClick,
 }: TextEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isEditorFocused, setIsEditorFocused] = useState(false);
   const [autocompleteState, setAutocompleteState] = useState<{
     visible: boolean;
     suggestions: string[];
@@ -66,6 +68,12 @@ export default function TextEditor({
     position: { top: number; left: number };
     triggerText: string;
   } | null>(null);
+
+  // Text editor keyboard shortcuts
+  const { saveToUndoStack, updateCurrentValue } = useTextEditorShortcuts({
+    isEditorFocused,
+    textareaRef,
+  });
 
   // Calculate line numbers and handle folding
   const lines = content.split('\n');
@@ -115,10 +123,25 @@ export default function TextEditor({
     return visibleLines;
   }, [lines, foldedLines]);
 
+  // Handle focus
+  const handleFocus = useCallback(() => {
+    setIsEditorFocused(true);
+  }, []);
+
+  // Handle blur
+  const handleBlur = useCallback(() => {
+    setIsEditorFocused(false);
+  }, []);
+
   // Handle text change
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     if (isReadOnly) return;
+    
+    // Save to undo stack before change
+    saveToUndoStack(content);
+    
     onChange(e.target.value);
+    updateCurrentValue(e.target.value);
     
     // Check for auto-complete trigger
     const textarea = textareaRef.current;
@@ -161,7 +184,7 @@ export default function TextEditor({
     
     // Hide autocomplete if conditions not met
     setAutocompleteState(null);
-  }, [isReadOnly, onChange]);
+  }, [isReadOnly, onChange, content, saveToUndoStack, updateCurrentValue]);
 
   // Handle keyboard events for autocomplete and indentation
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -505,12 +528,15 @@ export default function TextEditor({
           {!error && hasChildren(lineNumber - 1) && (
             <button
               onClick={() => onToggleFold(lineNumber)}
-              className="mr-1 text-gray-400 hover:text-gray-600"
+              className="mr-1 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              aria-label={foldedLines.has(lineNumber) ? `Expand line ${lineNumber}` : `Collapse line ${lineNumber}`}
+              aria-expanded={!foldedLines.has(lineNumber)}
+              type="button"
             >
               {foldedLines.has(lineNumber) ? (
-                <ChevronRight size={12} />
+                <ChevronRight size={12} aria-hidden="true" />
               ) : (
-                <ChevronDown size={12} />
+                <ChevronDown size={12} aria-hidden="true" />
               )}
             </button>
           )}
@@ -561,6 +587,13 @@ export default function TextEditor({
 
   return (
     <div className="relative h-full flex flex-col overflow-hidden">
+      {/* Hidden help text for screen readers */}
+      <div id="editor-help-text" className="sr-only">
+        Use prefix notation (O:, OP:, S:, SU:) followed by node content. 
+        Use 2-space indentation to create child nodes. 
+        Press Tab for autocomplete suggestions.
+      </div>
+
       {/* Syntax highlighted overlay */}
       <div className="absolute inset-0 overflow-auto pointer-events-none z-10">
         <div className="min-h-full">
@@ -577,8 +610,10 @@ export default function TextEditor({
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
         readOnly={isReadOnly}
-        className="absolute inset-0 w-full h-full font-mono text-sm leading-relaxed resize-none outline-none bg-transparent text-transparent caret-gray-800 z-20 px-3 py-0.5"
+        className="absolute inset-0 w-full h-full font-mono text-sm leading-relaxed resize-none outline-none bg-transparent text-transparent caret-gray-800 z-20 px-3 py-0.5 focus:ring-2 focus:ring-blue-500 focus:ring-inset"
         style={{
           paddingLeft: '4.5rem', // Account for line number gutter (increased for error icons)
           lineHeight: '1.6',
@@ -588,6 +623,10 @@ export default function TextEditor({
         autoCapitalize="off"
         autoComplete="off"
         autoCorrect="off"
+        aria-label={isReadOnly ? "Text editor (read-only)" : "Text editor for tree structure"}
+        aria-multiline="true"
+        aria-describedby="editor-help-text"
+        aria-invalid={validationErrors.length > 0}
       />
 
       {/* Error tooltip */}

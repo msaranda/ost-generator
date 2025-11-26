@@ -185,25 +185,33 @@ export default function TextEditorPanel({
   const errorCount = validationErrors.length;
 
   return (
-    <div
+    <aside
       ref={panelRef}
       className="flex flex-col h-full bg-white border-r border-gray-200 shadow-lg"
       style={{ width: `${width}px` }}
+      role="complementary"
+      aria-label="Text editor panel"
     >
       {/* Panel Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
-        <h2 className="text-sm font-semibold text-gray-800">Text Editor</h2>
+      <header className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
+        <h2 className="text-sm font-semibold text-gray-800" id="text-editor-title">Text Editor</h2>
         <button
           onClick={onClose}
-          className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
+          className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+          aria-label="Close text editor panel"
           title="Close text editor"
         >
-          <X size={16} />
+          <X size={16} aria-hidden="true" />
         </button>
-      </div>
+      </header>
 
       {/* Text Editor */}
-      <div className="flex-1 overflow-hidden" onScroll={handleScroll}>
+      <main 
+        className="flex-1 overflow-hidden" 
+        onScroll={handleScroll}
+        role="main"
+        aria-labelledby="text-editor-title"
+      >
         <TextEditor
           content={textContent}
           onChange={handleTextChange}
@@ -215,39 +223,74 @@ export default function TextEditorPanel({
           onToggleFold={handleToggleFold}
           onLineClick={handleLineClick}
         />
+      </main>
+
+      {/* ARIA live region for error announcements */}
+      <div 
+        role="status" 
+        aria-live="polite" 
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {isParsing ? (
+          'Parsing tree structure'
+        ) : errorCount > 0 ? (
+          `${errorCount} validation ${errorCount === 1 ? 'error' : 'errors'} found`
+        ) : (
+          'No validation errors'
+        )}
       </div>
 
       {/* Panel Footer */}
-      <div className="flex items-center justify-between px-4 py-2 border-t border-gray-200 bg-gray-50">
+      <footer 
+        className="flex items-center justify-between px-4 py-2 border-t border-gray-200 bg-gray-50"
+        role="status"
+        aria-label="Editor status"
+      >
         <div className="text-xs text-gray-600">
           {isParsing ? (
-            <span className="text-blue-600 font-medium">Parsing...</span>
+            <span className="text-blue-600 font-medium" aria-label="Parsing in progress">Parsing...</span>
           ) : errorCount > 0 ? (
-            <span className="text-red-600 font-medium">
+            <span className="text-red-600 font-medium" aria-label={`${errorCount} validation ${errorCount === 1 ? 'error' : 'errors'}`}>
               {errorCount} {errorCount === 1 ? 'error' : 'errors'}
             </span>
           ) : (
-            <span className="text-green-600 font-medium">No errors</span>
+            <span className="text-green-600 font-medium" aria-label="No validation errors">No errors</span>
           )}
         </div>
         <div className="flex items-center gap-3">
           {isReadOnly && (
-            <div className="text-xs text-amber-600 font-medium">Read-only</div>
+            <div className="text-xs text-amber-600 font-medium" role="status" aria-label="Editor is in read-only mode">Read-only</div>
           )}
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-gray-500" aria-label={`Cursor position: Line ${cursorPosition.line}, Column ${cursorPosition.column}`}>
             Ln {cursorPosition.line}, Col {cursorPosition.column}
           </div>
         </div>
-      </div>
+      </footer>
 
       {/* Resize Handle */}
-      <div
-        className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-400 transition-colors ${
+      <button
+        className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-400 transition-colors focus:outline-none focus:bg-blue-500 focus:w-2 ${
           isResizing ? 'bg-blue-500' : 'bg-transparent'
         }`}
         onMouseDown={handleResizeStart}
         style={{ touchAction: 'none' }}
+        aria-label="Resize text editor panel. Use left and right arrow keys to adjust width."
+        aria-valuenow={width}
+        aria-valuemin={MIN_WIDTH}
+        aria-valuemax={MAX_WIDTH}
+        type="button"
+        onKeyDown={(e) => {
+          // Allow keyboard resizing with arrow keys
+          if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            setWidth(prev => Math.max(MIN_WIDTH, prev - 10));
+          } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            setWidth(prev => Math.min(MAX_WIDTH, prev + 10));
+          }
+        }}
       />
-    </div>
+    </aside>
   );
 }
