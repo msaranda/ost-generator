@@ -27,6 +27,32 @@ export function useKeyboardShortcuts({
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const cmdOrCtrl = isMac ? event.metaKey : event.ctrlKey;
 
+      // When editing text, only handle specific shortcuts and let everything else pass through
+      if (isEditing) {
+        // Allow standard text editing shortcuts (Ctrl/Cmd + A, C, V, X, Z) to work normally
+        if (cmdOrCtrl && ['a', 'c', 'v', 'x'].includes(event.key.toLowerCase())) {
+          return; // Let browser handle these
+        }
+        
+        // Handle undo/redo even when editing (they work on text too)
+        if (cmdOrCtrl && event.key === 'z' && !event.shiftKey) {
+          return; // Let browser handle text undo
+        }
+        if (cmdOrCtrl && (event.key === 'y' || (event.key === 'z' && event.shiftKey))) {
+          return; // Let browser handle text redo
+        }
+        
+        // Escape exits editing mode
+        if (event.key === 'Escape' && onEscape) {
+          onEscape();
+        }
+        
+        // All other keys should work normally in text editing (Delete, Backspace, arrows, etc.)
+        return;
+      }
+
+      // Non-editing mode shortcuts below
+
       // Ctrl/Cmd + Z: Undo
       if (cmdOrCtrl && event.key === 'z' && !event.shiftKey) {
         event.preventDefault();
@@ -50,14 +76,6 @@ export function useKeyboardShortcuts({
         event.preventDefault();
         if (onRedo) {
           onRedo();
-        }
-        return;
-      }
-
-      // Don't handle other shortcuts when editing text
-      if (isEditing) {
-        if (event.key === 'Escape' && onEscape) {
-          onEscape();
         }
         return;
       }

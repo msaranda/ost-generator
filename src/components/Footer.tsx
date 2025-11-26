@@ -1,4 +1,4 @@
-import { Maximize, Minus, Plus, Move, LayoutGrid } from 'lucide-react';
+import { Maximize, Minus, Plus, Move, LayoutGrid, Eye } from 'lucide-react';
 
 interface FooterProps {
   zoom: number;
@@ -8,6 +8,7 @@ interface FooterProps {
   lastSaved?: Date | null;
   layoutMode: 'auto' | 'manual';
   onToggleLayoutMode: () => void;
+  isReadOnly?: boolean;
 }
 
 export default function Footer({
@@ -18,6 +19,7 @@ export default function Footer({
   lastSaved,
   layoutMode,
   onToggleLayoutMode,
+  isReadOnly = false,
 }: FooterProps) {
   const zoomPercent = Math.round(zoom * 100);
 
@@ -101,13 +103,18 @@ export default function Footer({
         </div>
       </div>
 
-      {/* Auto-save indicator */}
-      {lastSaved && (
+      {/* Auto-save indicator or Read-only badge */}
+      {isReadOnly ? (
+        <div className="flex items-center gap-2 text-xs text-amber-600">
+          <Eye size={14} />
+          View only - changes won't be saved
+        </div>
+      ) : lastSaved ? (
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <div className="w-2 h-2 rounded-full bg-green-400" />
           {formatLastSaved(lastSaved)}
         </div>
-      )}
+      ) : null}
 
       {/* Spacer for mini-map */}
       <div className="w-24" />

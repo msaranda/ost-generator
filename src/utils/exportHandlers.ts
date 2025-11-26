@@ -1,8 +1,32 @@
 import html2canvas from 'html2canvas';
 import { TreeState, ExportData, OSTNode, NODE_SIZES, NodeType } from '../types';
+import { Session } from '../hooks/useAutoSave';
+
+// Export a session to JSON format
+export function exportSessionToJSON(session: Session): void {
+  const exportData: ExportData = {
+    version: '1.0',
+    created: session.savedAt,
+    modified: session.savedAt,
+    tree: session.tree,
+  };
+
+  const json = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  
+  const link = document.createElement('a');
+  // Use session title for filename, sanitize it
+  const sanitizedTitle = session.title.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+  link.download = `${sanitizedTitle}-${Date.now()}.json`;
+  link.href = url;
+  link.click();
+  
+  URL.revokeObjectURL(url);
+}
 
 // Export tree to JSON format
-export function exportToJSON(tree: TreeState): void {
+export function exportToJSON(tree: TreeState, title?: string): void {
   const exportData: ExportData = {
     version: '1.0',
     created: new Date().toISOString(),
@@ -18,7 +42,13 @@ export function exportToJSON(tree: TreeState): void {
   const url = URL.createObjectURL(blob);
   
   const link = document.createElement('a');
-  link.download = `ost-${Date.now()}.json`;
+  // Use title for filename if provided
+  if (title) {
+    const sanitizedTitle = title.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+    link.download = `${sanitizedTitle}-${Date.now()}.json`;
+  } else {
+    link.download = `ost-${Date.now()}.json`;
+  }
   link.href = url;
   link.click();
   

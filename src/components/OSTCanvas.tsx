@@ -26,9 +26,11 @@ interface OSTCanvasProps {
   onSelectNode: (id: string | null) => void;
   onRequestDelete: (id: string) => void;
   onMoveNode: (id: string, position: { x: number; y: number }) => void;
+  onEditingChange: (isEditing: boolean) => void;
   zoom: number;
   onZoomChange: (zoom: number) => void;
   layoutMode: 'auto' | 'manual';
+  isReadOnly?: boolean;
 }
 
 export interface OSTCanvasHandle {
@@ -59,9 +61,11 @@ const OSTCanvasInner = forwardRef<OSTCanvasHandle, OSTCanvasProps>(
       onSelectNode,
       onRequestDelete,
       onMoveNode,
+      onEditingChange,
       zoom: _zoom,
       onZoomChange,
       layoutMode,
+      isReadOnly = false,
     },
     ref
   ) {
@@ -96,16 +100,18 @@ const OSTCanvasInner = forwardRef<OSTCanvasHandle, OSTCanvasProps>(
             onDelete: onRequestDelete,
             onAddChild,
             onSelect: onSelectNode,
+            onEditingChange,
             isSelected: tree.selectedNodeId === node.id,
+            isReadOnly,
           },
           style: {
             width: size.width,
             height: size.height,
           },
-          draggable: layoutMode === 'manual', // Enable dragging in manual mode
+          draggable: layoutMode === 'manual' && !isReadOnly, // Enable dragging in manual mode (not in read-only)
         };
       });
-    }, [tree.nodes, tree.selectedNodeId, onUpdateNode, onRequestDelete, onAddChild, onSelectNode, layoutMode]);
+    }, [tree.nodes, tree.selectedNodeId, onUpdateNode, onRequestDelete, onAddChild, onSelectNode, onEditingChange, layoutMode, isReadOnly]);
 
     // Handle node drag end (for manual mode)
     const handleNodeDragStop: NodeDragHandler = useCallback(

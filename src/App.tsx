@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useOSTTree } from './hooks/useOSTTree';
-import { useAutoSave, getAutosave, clearAutosave } from './hooks/useAutoSave';
+import { useAutoSave, getLatestSession, getSessions, Session } from './hooks/useAutoSave';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { validateTreeJSON, parseValidatedData } from './utils/validation';
 import { exportToJSON, exportToJPG, readJSONFile } from './utils/exportHandlers';
@@ -12,7 +12,7 @@ import Footer from './components/Footer';
 import OSTCanvas, { OSTCanvasHandle } from './components/OSTCanvas';
 import ImportModal from './components/ImportModal';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
-import RestoreModal from './components/RestoreModal';
+import SessionLimitModal from './components/SessionLimitModal';
 
 function App() {
   // Tree state management
@@ -34,6 +34,8 @@ function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [layoutMode, setLayoutMode] = useState<'auto' | 'manual'>('auto');
+  const [isReadOnly, setIsReadOnly] = useState(false);
+  const [title, setTitle] = useState('Untitled');
 
   // Modal states
   const [showImportModal, setShowImportModal] = useState(false);
@@ -44,33 +46,39 @@ function App() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
-  const [showRestoreModal, setShowRestoreModal] = useState(false);
-  const [restoreSavedAt, setRestoreSavedAt] = useState('');
-  const [pendingRestoreTree, setPendingRestoreTree] = useState<TreeState | null>(null);
-
   // Refs
   const canvasRef = useRef<OSTCanvasHandle>(null);
   const hasCheckedInitialLoad = useRef(false);
 
-  // Auto-save
-  const { lastSaved } = useAutoSave(tree);
+  // Auto-save (disabled in read-only mode)
+  const { 
+    lastSaved, 
+    currentSessionId,
+    pendingSessionToRemove,
+    createNewSession,
+    switchSession,
+    dismissPendingRemoval,
+    confirmRemoval,
+    updateSessionTitle,
+  } = useAutoSave(tree, !isReadOnly, title);
 
-  // Check for shared tree in URL or autosave on mount (runs only once)
+  // Check for shared tree in URL or auto-restore latest session on mount
   useEffect(() => {
     // Guard to prevent multiple runs
     if (hasCheckedInitialLoad.current) return;
     hasCheckedInitialLoad.current = true;
 
-    // Priority: URL tree > autosave > default tree
+    // Priority: URL tree (read-only) > latest session > default tree
     if (hasSharedTree()) {
       try {
         const sharedTree = loadTreeFromUrl();
         if (sharedTree) {
           importTree(sharedTree);
-          // Clear both URL parameter and autosave when loading shared tree
+          setIsReadOnly(true);
+          setTitle('Shared Tree');
+          // Clear URL parameter but don't touch saved sessions
           clearTreeFromUrl();
-          clearAutosave();
-          return; // Skip autosave check if URL tree was loaded
+          return;
         }
       } catch (error) {
         console.error('Failed to load shared tree from URL:', error);
@@ -79,33 +87,73 @@ function App() {
       }
     }
 
-    // Fall back to autosave if no URL tree
-    const autosave = getAutosave();
-    if (autosave && autosave.savedAt) {
-      setRestoreSavedAt(autosave.savedAt);
-      setPendingRestoreTree({
-        rootId: autosave.tree.rootId,
-        nodes: autosave.tree.nodes,
+    // Auto-restore latest session (no modal)
+    const latestSession = getLatestSession();
+    if (latestSession) {
+      importTree({
+        rootId: latestSession.tree.rootId,
+        nodes: latestSession.tree.nodes,
         selectedNodeId: null,
       });
-      setShowRestoreModal(true);
+      setTitle(latestSession.title || 'Untitled');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle restore
-  const handleRestore = useCallback(() => {
-    if (pendingRestoreTree) {
-      importTree(pendingRestoreTree);
-      setPendingRestoreTree(null);
-    }
-  }, [pendingRestoreTree, importTree]);
+  // Handle title change
+  const handleTitleChange = useCallback((newTitle: string) => {
+    setTitle(newTitle);
+    updateSessionTitle(newTitle);
+  }, [updateSessionTitle]);
 
-  const handleDiscardRestore = useCallback(() => {
-    clearAutosave();
-    setPendingRestoreTree(null);
-    setShowRestoreModal(false);
-  }, []);
+  // Handle creating a new tree
+  const handleNewTree = useCallback(() => {
+    // Exit read-only mode if active
+    if (isReadOnly) {
+      setIsReadOnly(false);
+    }
+    // Create a fresh default tree
+    importTree({
+      rootId: 'root',
+      nodes: {
+        root: {
+          id: 'root',
+          type: 'outcome',
+          content: 'Your outcome here',
+          parentId: null,
+          children: [],
+          position: { x: 0, y: 0 },
+        },
+      },
+      selectedNodeId: null,
+    });
+    setTitle('Untitled');
+    // Create a new session for it
+    setTimeout(() => createNewSession(true), 100);
+  }, [isReadOnly, importTree, createNewSession]);
+
+  // Handle switching sessions
+  const handleSessionSelect = useCallback((session: Session) => {
+    // Exit read-only mode if active
+    if (isReadOnly) {
+      setIsReadOnly(false);
+    }
+    importTree({
+      rootId: session.tree.rootId,
+      nodes: session.tree.nodes,
+      selectedNodeId: null,
+    });
+    setTitle(session.title || 'Untitled');
+    switchSession(session.id);
+  }, [isReadOnly, importTree, switchSession]);
+
+  // Handle editing a shared tree (save as new session)
+  const handleEditSharedTree = useCallback(() => {
+    setIsReadOnly(false);
+    setTitle('Shared Tree (Copy)');
+    // Create a new session for this shared tree
+    setTimeout(() => createNewSession(true), 100);
+  }, [createNewSession]);
 
   // Handle import
   const handleImport = useCallback(async (file: File) => {
@@ -136,16 +184,25 @@ function App() {
 
   const handleConfirmImport = useCallback(() => {
     if (pendingImportData) {
+      // Exit read-only mode when importing
+      if (isReadOnly) {
+        setIsReadOnly(false);
+      }
       const treeState = parseValidatedData(pendingImportData);
       importTree(treeState);
       setPendingImportData(null);
+      // Use filename as title
+      const importedTitle = importFileName.replace(/\.json$/i, '') || 'Imported Tree';
+      setTitle(importedTitle);
+      // Create a new session for imported data
+      setTimeout(() => createNewSession(true), 100);
     }
-  }, [pendingImportData, importTree]);
+  }, [pendingImportData, importTree, isReadOnly, createNewSession, importFileName]);
 
   // Handle export
   const handleExportJSON = useCallback(() => {
-    exportToJSON(tree);
-  }, [tree]);
+    exportToJSON(tree, title);
+  }, [tree, title]);
 
   const handleExportImage = useCallback(async () => {
     const canvasElement = canvasRef.current?.getCanvasElement();
@@ -164,9 +221,10 @@ function App() {
 
   // Handle delete with confirmation
   const handleRequestDelete = useCallback((id: string) => {
+    if (isReadOnly) return;
     setPendingDeleteId(id);
     setShowDeleteModal(true);
-  }, []);
+  }, [isReadOnly]);
 
   const handleConfirmDelete = useCallback(() => {
     if (pendingDeleteId) {
@@ -206,12 +264,12 @@ function App() {
     });
   }, [recalculateLayout]);
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts (disabled in read-only mode for mutations)
   useKeyboardShortcuts({
-    onAddChild: tree.selectedNodeId
+    onAddChild: (!isReadOnly && tree.selectedNodeId)
       ? () => addNode(tree.selectedNodeId!)
       : undefined,
-    onDelete: tree.selectedNodeId
+    onDelete: (!isReadOnly && tree.selectedNodeId)
       ? () => handleRequestDelete(tree.selectedNodeId!)
       : undefined,
     onEscape: () => {
@@ -219,8 +277,8 @@ function App() {
       setIsEditing(false);
     },
     onSave: handleExportJSON,
-    onUndo: undo,
-    onRedo: redo,
+    onUndo: isReadOnly ? undefined : undo,
+    onRedo: isReadOnly ? undefined : redo,
     selectedNodeId: tree.selectedNodeId,
     isEditing,
   });
@@ -233,21 +291,32 @@ function App() {
         onExportImage={handleExportImage}
         isExporting={isExporting}
         treeData={tree}
+        isReadOnly={isReadOnly}
+        onNewTree={handleNewTree}
+        sessions={getSessions().sessions}
+        currentSessionId={currentSessionId}
+        onSessionSelect={handleSessionSelect}
+        title={title}
+        onTitleChange={handleTitleChange}
+        lastSaved={lastSaved}
+        onEditSharedTree={isReadOnly ? handleEditSharedTree : undefined}
       />
 
       <main className="flex-1 relative overflow-hidden">
         <OSTCanvas
           ref={canvasRef}
           tree={tree}
-          onUpdateNode={updateNode}
-          onDeleteNode={deleteNode}
-          onAddChild={addNode}
+          onUpdateNode={isReadOnly ? () => {} : updateNode}
+          onDeleteNode={isReadOnly ? () => {} : deleteNode}
+          onAddChild={isReadOnly ? () => {} : addNode}
           onSelectNode={selectNode}
           onRequestDelete={handleRequestDelete}
-          onMoveNode={moveNode}
+          onMoveNode={isReadOnly ? () => {} : moveNode}
+          onEditingChange={setIsEditing}
           zoom={zoom}
           onZoomChange={setZoom}
           layoutMode={layoutMode}
+          isReadOnly={isReadOnly}
         />
       </main>
 
@@ -259,6 +328,7 @@ function App() {
         lastSaved={lastSaved}
         layoutMode={layoutMode}
         onToggleLayoutMode={handleToggleLayoutMode}
+        isReadOnly={isReadOnly}
       />
 
       {/* Modals */}
@@ -281,12 +351,12 @@ function App() {
         childCount={deleteChildCount}
       />
 
-      <RestoreModal
-        isOpen={showRestoreModal}
-        onClose={() => setShowRestoreModal(false)}
-        onRestore={handleRestore}
-        onDiscard={handleDiscardRestore}
-        savedAt={restoreSavedAt}
+      <SessionLimitModal
+        isOpen={!!pendingSessionToRemove}
+        sessionToRemove={pendingSessionToRemove}
+        onDownloadAndRemove={confirmRemoval}
+        onRemove={confirmRemoval}
+        onCancel={dismissPendingRemoval}
       />
     </div>
   );
@@ -308,4 +378,3 @@ function countDescendants(
 }
 
 export default App;
-

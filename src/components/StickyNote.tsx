@@ -9,7 +9,9 @@ interface StickyNoteData extends OSTNode {
   onDelete: (id: string) => void;
   onAddChild: (parentId: string) => void;
   onSelect: (id: string | null) => void;
+  onEditingChange: (isEditing: boolean) => void;
   isSelected: boolean;
+  isReadOnly?: boolean;
 }
 
 const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
@@ -20,6 +22,7 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
 
   const size = NODE_SIZES[data.type as NodeType] || NODE_SIZES.opportunity;
   const isRoot = data.parentId === null;
+  const isReadOnly = data.isReadOnly ?? false;
 
   // Update edit content when data changes
   useEffect(() => {
@@ -36,50 +39,58 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
     }
   }, [isEditing]);
 
-  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsEditing(true);
-  }, []);
-
   const handleBlur = useCallback(() => {
     setIsEditing(false);
+    data.onEditingChange(false);
     if (editContent.trim() !== data.content) {
       data.onUpdate(data.id, editContent.trim() || data.content);
     }
   }, [editContent, data]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // Stop propagation for all keyboard events in textarea to prevent global shortcuts
+    e.stopPropagation();
+    
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleBlur();
     } else if (e.key === 'Escape') {
+      e.preventDefault();
       setEditContent(data.content);
       setIsEditing(false);
+      data.onEditingChange(false);
     }
-  }, [handleBlur, data.content]);
+  }, [handleBlur, data]);
 
   const handleDelete = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!isRoot) {
+    if (!isRoot && !isReadOnly) {
       data.onDelete(data.id);
     }
-  }, [data, isRoot]);
+  }, [data, isRoot, isReadOnly]);
 
   const handleAddChild = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    data.onAddChild(data.id);
-  }, [data]);
+    if (!isReadOnly) {
+      data.onAddChild(data.id);
+    }
+  }, [data, isReadOnly]);
 
-  const handleClick = useCallback((e: React.MouseEvent) => {
+  // Handle click on label area - only selects the node
+  const handleLabelClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     data.onSelect(data.id);
   }, [data]);
 
-  // Handle click on text content to start editing
-  const handleTextClick = useCallback((e: React.MouseEvent) => {
+  // Handle click on content area - enters edit mode (if not read-only)
+  const handleContentClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsEditing(true);
-  }, []);
+    data.onSelect(data.id);
+    if (!isReadOnly) {
+      setIsEditing(true);
+      data.onEditingChange(true);
+    }
+  }, [data, isReadOnly]);
 
   // Get styling based on node type
   const getBackgroundColor = () => {
@@ -107,7 +118,7 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
   return (
     <div
       className={`
-        relative cursor-default
+        relative cursor-default flex flex-col
         ${getBackgroundColor()}
         ${getBorderColor()}
         rounded-lg shadow-md
@@ -123,8 +134,6 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
     >
       {/* Connection handles */}
       {!isRoot && (
@@ -141,7 +150,7 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
       />
 
       {/* Delete button */}
-      {isHovered && !isRoot && (
+      {isHovered && !isRoot && !isReadOnly && (
         <button
           onClick={handleDelete}
           className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full shadow-md hover:bg-red-600 transition-colors z-10"
@@ -152,7 +161,7 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
       )}
 
       {/* Add child button */}
-      {isHovered && (
+      {isHovered && !isReadOnly && (
         <button
           onClick={handleAddChild}
           className="absolute -bottom-2 left-1/2 -translate-x-1/2 p-1 bg-blue-500 text-white rounded-full shadow-md hover:bg-blue-600 transition-colors z-10"
@@ -162,13 +171,19 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
         </button>
       )}
 
-      {/* Node type label */}
-      <div className="absolute top-2 left-3 text-[10px] font-medium text-gray-500 uppercase tracking-wider">
+      {/* Node type label - clicking selects node only */}
+      <div 
+        className="px-3 pt-2 pb-1 text-[10px] font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+        onClick={handleLabelClick}
+      >
         {getNodeTypeLabel(data.type as NodeType)}
       </div>
 
-      {/* Content */}
-      <div className="flex items-center justify-center h-full px-3 pt-5 pb-3">
+      {/* Content area - clicking enters edit mode */}
+      <div 
+        className={`flex-1 flex items-center justify-center px-3 pb-3 ${isReadOnly ? 'cursor-default' : 'cursor-text'}`}
+        onClick={handleContentClick}
+      >
         {isEditing ? (
           <textarea
             ref={textareaRef}
@@ -187,9 +202,8 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
           />
         ) : (
           <p
-            onClick={handleTextClick}
             className={`
-              text-center text-sm leading-snug break-words overflow-hidden cursor-text
+              text-center text-sm leading-snug break-words overflow-hidden
               ${data.type === 'outcome' ? 'font-semibold text-base' : ''}
             `}
             style={{
