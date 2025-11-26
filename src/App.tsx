@@ -367,6 +367,7 @@ function App() {
           onSelectNode={selectNode}
           onClose={() => setShowTextEditor(false)}
           onRecalculateLayout={recalculateLayout}
+          canvasRef={canvasRef}
         />
         <div className="flex-1 relative overflow-hidden">
           <OSTCanvas

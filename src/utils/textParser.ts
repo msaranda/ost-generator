@@ -13,6 +13,7 @@ export interface ParseResult {
   success: boolean;
   tree?: TreeState;
   errors: ValidationError[];
+  nodeLineMap?: Record<string, number>; // Maps node ID to line number
 }
 
 interface ParseContext {
@@ -21,6 +22,7 @@ interface ParseContext {
   nodeStack: Array<{ node: OSTNode; indentLevel: number }>;
   errors: ValidationError[];
   nodeMap: Record<string, OSTNode>;
+  nodeLineMap: Record<string, number>; // Maps node ID to line number
 }
 
 // Prefix mapping for node types
@@ -132,6 +134,7 @@ export function parseText(text: string): ParseResult {
     nodeStack: [],
     errors: [],
     nodeMap: {},
+    nodeLineMap: {},
   };
 
   let rootId: string | null = null;
@@ -211,6 +214,7 @@ export function parseText(text: string): ParseResult {
 
       rootId = nodeId;
       context.nodeMap[nodeId] = node;
+      context.nodeLineMap[nodeId] = context.currentLine;
       context.nodeStack.push({ node, indentLevel });
     } else {
       // Find parent based on indentation
@@ -235,6 +239,7 @@ export function parseText(text: string): ParseResult {
       node.parentId = parent.id;
       parent.children.push(nodeId);
       context.nodeMap[nodeId] = node;
+      context.nodeLineMap[nodeId] = context.currentLine;
       context.nodeStack.push({ node, indentLevel });
     }
   }
@@ -277,5 +282,6 @@ export function parseText(text: string): ParseResult {
       selectedNodeId: null,
     },
     errors: [],
+    nodeLineMap: context.nodeLineMap,
   };
 }

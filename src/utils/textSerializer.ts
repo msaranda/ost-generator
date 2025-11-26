@@ -5,6 +5,11 @@ export interface SerializeOptions {
   preserveDescriptions?: boolean;
 }
 
+export interface SerializeResult {
+  text: string;
+  nodeLineMap: Record<string, number>; // Maps node ID to line number
+}
+
 // Shorthand prefix mapping
 const SHORTHAND_PREFIX: Record<NodeType, string> = {
   'outcome': 'O:',
@@ -43,18 +48,23 @@ function serializeNode(
   nodes: Record<string, OSTNode>,
   depth: number,
   options: SerializeOptions,
-  lines: string[]
+  lines: string[],
+  nodeLineMap: Record<string, number>
 ): void {
   const indent = getIndentation(depth);
   const prefix = getPrefix(node.type, options.useShorthand ?? true);
   const line = `${indent}${prefix} ${node.content}`;
+  
+  // Track line number (1-indexed)
+  const lineNumber = lines.length + 1;
+  nodeLineMap[node.id] = lineNumber;
   lines.push(line);
 
   // Serialize children in order
   for (const childId of node.children) {
     const child = nodes[childId];
     if (child) {
-      serializeNode(child, nodes, depth + 1, options, lines);
+      serializeNode(child, nodes, depth + 1, options, lines, nodeLineMap);
     }
   }
 }
@@ -65,16 +75,20 @@ function serializeNode(
 export function serializeTree(
   tree: TreeState,
   options: SerializeOptions = {}
-): string {
+): SerializeResult {
   const lines: string[] = [];
+  const nodeLineMap: Record<string, number> = {};
   const rootNode = tree.nodes[tree.rootId];
 
   if (!rootNode) {
-    return '';
+    return { text: '', nodeLineMap: {} };
   }
 
   // Start serialization from root
-  serializeNode(rootNode, tree.nodes, 0, options, lines);
+  serializeNode(rootNode, tree.nodes, 0, options, lines, nodeLineMap);
 
-  return lines.join('\n');
+  return {
+    text: lines.join('\n'),
+    nodeLineMap,
+  };
 }

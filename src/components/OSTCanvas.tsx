@@ -73,6 +73,7 @@ export interface OSTCanvasHandle {
   zoomOut: () => void;
   getCanvasElement: () => HTMLElement | null;
   getNearestNodeToCursor: () => string | null;
+  panToNode: (nodeId: string) => void;
 }
 
 // Custom node types
@@ -139,6 +140,18 @@ const OSTCanvasInner = forwardRef<OSTCanvasHandle, OSTCanvasProps>(
         // Convert screen coordinates to flow coordinates
         const flowPosition = reactFlowInstance.screenToFlowPosition(mousePosition);
         return findNearestNode(flowPosition, tree.nodes);
+      },
+      panToNode: (nodeId: string) => {
+        const node = tree.nodes[nodeId];
+        if (node) {
+          const size = NODE_SIZES[node.type as NodeType] || NODE_SIZES.opportunity;
+          // Center on the node
+          reactFlowInstance.setCenter(
+            node.position.x + size.width / 2,
+            node.position.y + size.height / 2,
+            { duration: 300, zoom: reactFlowInstance.getZoom() }
+          );
+        }
       },
     }), [reactFlowInstance, mousePosition, tree.nodes]);
 

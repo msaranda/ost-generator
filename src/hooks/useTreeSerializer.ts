@@ -5,6 +5,7 @@ import { serializeTree, SerializeOptions } from '../utils/textSerializer';
 export interface UseTreeSerializerReturn {
   serializedText: string;
   isSerializing: boolean;
+  nodeLineMap: Record<string, number>;
 }
 
 interface UseTreeSerializerOptions {
@@ -32,7 +33,7 @@ export function useTreeSerializer({
    * Serialize tree to text format
    * Memoized to avoid unnecessary re-serialization
    */
-  const serializedText = useMemo(() => {
+  const serializeResult = useMemo(() => {
     // Create a stable string representation of the tree for comparison
     const treeSnapshot = JSON.stringify({
       rootId: tree.rootId,
@@ -47,15 +48,18 @@ export function useTreeSerializer({
     previousTreeRef.current = treeSnapshot;
     isSerializingRef.current = true;
 
-    const text = serializeTree(tree, options);
+    const result = serializeTree(tree, options);
 
     // Reset serializing flag after a short delay
     setTimeout(() => {
       isSerializingRef.current = false;
     }, 0);
 
-    return text;
+    return result;
   }, [tree, options]);
+
+  const serializedText = serializeResult.text;
+  const nodeLineMap = serializeResult.nodeLineMap;
 
   /**
    * Update text editor when serialized text changes
@@ -72,5 +76,6 @@ export function useTreeSerializer({
   return {
     serializedText,
     isSerializing: isSerializingRef.current,
+    nodeLineMap,
   };
 }

@@ -15,6 +15,7 @@ export interface UseTextEditorReturn {
   cursorPosition: CursorPosition;
   setCursorPosition: (pos: CursorPosition) => void;
   handleTextChange: (newText: string) => void;
+  nodeLineMap: Record<string, number>;
 }
 
 interface UseTextEditorOptions {
@@ -40,6 +41,7 @@ export function useTextEditor({
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [isParsing, setIsParsing] = useState(false);
   const [cursorPosition, setCursorPosition] = useState<CursorPosition>({ line: 1, column: 0 });
+  const [nodeLineMap, setNodeLineMap] = useState<Record<string, number>>({});
 
   // Refs to manage debouncing and prevent parsing loops
   const parseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -63,6 +65,9 @@ export function useTextEditor({
     if (result.success && result.tree) {
       // Clear validation errors
       setValidationErrors([]);
+      
+      // Update node line map
+      setNodeLineMap(result.nodeLineMap || {});
       
       // Update tree state
       onTreeUpdate(result.tree);
@@ -136,5 +141,6 @@ export function useTextEditor({
     cursorPosition,
     setCursorPosition,
     handleTextChange,
+    nodeLineMap,
   };
 }

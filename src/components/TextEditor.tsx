@@ -16,6 +16,7 @@ interface TextEditorProps {
   isReadOnly: boolean;
   foldedLines: Set<number>;
   onToggleFold: (line: number) => void;
+  onLineClick?: (line: number) => void;
 }
 
 // Prefix colors for syntax highlighting
@@ -55,6 +56,7 @@ export default function TextEditor({
   isReadOnly,
   foldedLines,
   onToggleFold,
+  onLineClick,
 }: TextEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [autocompleteState, setAutocompleteState] = useState<{
@@ -388,6 +390,19 @@ export default function TextEditor({
     onCursorChange({ line, column });
   }, [onCursorChange]);
 
+  // Handle line click for selection synchronization
+  const handleClick = useCallback(() => {
+    if (!textareaRef.current || !onLineClick) return;
+    
+    const textarea = textareaRef.current;
+    const cursorPos = textarea.selectionStart;
+    const textBeforeCursor = textarea.value.substring(0, cursorPos);
+    const lines = textBeforeCursor.split('\n');
+    const line = lines.length;
+    
+    onLineClick(line);
+  }, [onLineClick]);
+
   // Update cursor position on selection change
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -403,6 +418,18 @@ export default function TextEditor({
       textarea.removeEventListener('keyup', handleSelectionChange);
     };
   }, [handleSelectionChange]);
+
+  // Handle click for line selection
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    textarea.addEventListener('click', handleClick);
+
+    return () => {
+      textarea.removeEventListener('click', handleClick);
+    };
+  }, [handleClick]);
 
   // Check if a line has children (for fold indicators)
   const hasChildren = useCallback((lineIndex: number): boolean => {

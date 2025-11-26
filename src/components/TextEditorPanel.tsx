@@ -14,21 +14,14 @@ interface TextEditorPanelProps {
   onSelectNode: (id: string | null) => void;
   onClose: () => void;
   onRecalculateLayout: () => void;
+  canvasRef?: React.RefObject<{ panToNode: (nodeId: string) => void }>;
 }
 
 const MIN_WIDTH = 300;
 const MAX_WIDTH = 600;
 const DEFAULT_WIDTH = 400;
 
-/**
- * Helper function to find the line number for a given node ID in the text
- */
-function getLineForNode(_text: string, _nodeId: string): number | null {
-  // This is a simple implementation - in a real scenario, we'd need to
-  // maintain a mapping between node IDs and line numbers during parsing
-  // For now, we'll return null as this requires parser integration
-  return null;
-}
+
 
 export default function TextEditorPanel({
   tree,
@@ -36,12 +29,15 @@ export default function TextEditorPanel({
   isReadOnly,
   onTreeUpdate,
   selectedNodeId,
+  onSelectNode,
   onClose,
   onRecalculateLayout,
+  canvasRef,
 }: TextEditorPanelProps) {
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
   const [foldedLines, setFoldedLines] = useState<Set<number>>(new Set());
+  const [nodeLineMap, setNodeLineMap] = useState<Record<string, number>>({});
   
   const panelRef = useRef<HTMLDivElement>(null);
   const startXRef = useRef(0);
@@ -57,6 +53,7 @@ export default function TextEditorPanel({
     cursorPosition,
     setCursorPosition,
     handleTextChange,
+    nodeLineMap: parsedNodeLineMap,
   } = useTextEditor({
     tree,
     onTreeUpdate: (newTree) => {
@@ -69,7 +66,7 @@ export default function TextEditorPanel({
   });
 
   // Tree serializer hook - handles tree changes to text
-  useTreeSerializer({
+  const { nodeLineMap: serializedNodeLineMap } = useTreeSerializer({
     tree,
     onTextUpdate: (text) => {
       // Preserve scroll position
@@ -86,6 +83,15 @@ export default function TextEditorPanel({
       }, 0);
     },
   });
+
+  // Update node line map - prefer parsed map if available, otherwise use serialized
+  useEffect(() => {
+    if (Object.keys(parsedNodeLineMap).length > 0) {
+      setNodeLineMap(parsedNodeLineMap);
+    } else if (Object.keys(serializedNodeLineMap).length > 0) {
+      setNodeLineMap(serializedNodeLineMap);
+    }
+  }, [parsedNodeLineMap, serializedNodeLineMap]);
 
   // Handle resize start
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -132,7 +138,9 @@ export default function TextEditorPanel({
   }, []);
 
   // Calculate selected line from selectedNodeId
-  const selectedLine = selectedNodeId ? getLineForNode(textContent, selectedNodeId) : null;
+  const selectedLine = selectedNodeId && nodeLineMap[selectedNodeId] 
+    ? nodeLineMap[selectedNodeId] 
+    : null;
 
   // Handle fold toggle
   const handleToggleFold = useCallback((line: number) => {
@@ -146,6 +154,19 @@ export default function TextEditorPanel({
       return next;
     });
   }, []);
+
+  // Handle line click - select corresponding node
+  const handleLineClick = useCallback((line: number) => {
+    // Find node ID for this line
+    const nodeId = Object.keys(nodeLineMap).find(id => nodeLineMap[id] === line);
+    if (nodeId) {
+      onSelectNode(nodeId);
+      // Pan visual canvas to center the selected node
+      if (canvasRef?.current) {
+        canvasRef.current.panToNode(nodeId);
+      }
+    }
+  }, [nodeLineMap, onSelectNode, canvasRef]);
 
   // Scroll to selected line when selection changes
   useEffect(() => {
@@ -192,6 +213,7 @@ export default function TextEditorPanel({
           isReadOnly={isReadOnly}
           foldedLines={foldedLines}
           onToggleFold={handleToggleFold}
+          onLineClick={handleLineClick}
         />
       </div>
 
