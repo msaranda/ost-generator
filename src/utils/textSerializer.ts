@@ -60,6 +60,21 @@ function serializeNode(
   nodeLineMap[node.id] = lineNumber;
   lines.push(line);
 
+  // Serialize description if present and preserveDescriptions is enabled
+  if (node.description && (options.preserveDescriptions ?? true)) {
+    const descriptionLines = node.description.split('\n');
+    const descriptionIndent = getIndentation(depth + 1);
+    
+    for (const descLine of descriptionLines) {
+      // Use quotes for the first line if it's a single line, otherwise use continuation format
+      if (descriptionLines.length === 1) {
+        lines.push(`${descriptionIndent}"${descLine}"`);
+      } else {
+        lines.push(`${descriptionIndent}${descLine}`);
+      }
+    }
+  }
+
   // Serialize children in order
   for (const childId of node.children) {
     const child = nodes[childId];

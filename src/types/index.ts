@@ -6,6 +6,7 @@ export interface OSTNode {
   id: string;
   type: NodeType;
   content: string;
+  description?: string; // Optional multi-line description
   parentId: string | null;
   children: string[];
   position: { x: number; y: number };

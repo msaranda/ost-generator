@@ -124,6 +124,45 @@ function findParent(
 }
 
 /**
+ * Check if a line is a quoted description
+ */
+function isQuotedDescription(line: string): boolean {
+  const trimmed = line.trim();
+  return (trimmed.startsWith('"') && trimmed.endsWith('"')) || 
+         (trimmed.startsWith("'") && trimmed.endsWith("'"));
+}
+
+/**
+ * Extract description from quoted line
+ */
+function extractQuotedDescription(line: string): string {
+  const trimmed = line.trim();
+  return trimmed.slice(1, -1); // Remove quotes
+}
+
+/**
+ * Check if a line is a continuation line (indented but no prefix)
+ */
+function isContinuationLine(line: string, expectedIndent: number): boolean {
+  const indentLevel = getIndentLevel(line);
+  const trimmed = line.trim();
+  
+  // Must be indented more than the node and not have a node prefix
+  if (indentLevel <= expectedIndent || trimmed === '') {
+    return false;
+  }
+  
+  // Check if it has a node prefix
+  for (const prefix of Object.keys(PREFIX_MAP)) {
+    if (trimmed.startsWith(prefix)) {
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+/**
  * Parse text content into a tree structure
  */
 export function parseText(text: string): ParseResult {
@@ -138,18 +177,47 @@ export function parseText(text: string): ParseResult {
   };
 
   let rootId: string | null = null;
+  let lastNode: OSTNode | null = null;
+  let lastNodeIndent: number = -1;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     context.currentLine = i + 1; // 1-indexed for user display
 
-    // Skip empty lines
+    // Skip empty lines (they terminate multi-line content)
     if (line.trim() === '') {
+      lastNode = null;
+      lastNodeIndent = -1;
       continue;
     }
 
     const indentLevel = getIndentLevel(line);
     const { prefix, content, nodeType } = parseLine(line);
+
+    // Check if this is a description or continuation line for the last node
+    if (lastNode !== null && lastNodeIndent >= 0) {
+      // Check for quoted description
+      if (isQuotedDescription(line) && indentLevel > lastNodeIndent) {
+        const description = extractQuotedDescription(line);
+        if (lastNode.description) {
+          lastNode.description += '\n' + description;
+        } else {
+          lastNode.description = description;
+        }
+        continue;
+      }
+      
+      // Check for continuation line
+      if (isContinuationLine(line, lastNodeIndent)) {
+        const continuationText = line.trim();
+        if (lastNode.description) {
+          lastNode.description += '\n' + continuationText;
+        } else {
+          lastNode.description = continuationText;
+        }
+        continue;
+      }
+    }
 
     // Validate prefix
     if (!nodeType) {
@@ -216,6 +284,8 @@ export function parseText(text: string): ParseResult {
       context.nodeMap[nodeId] = node;
       context.nodeLineMap[nodeId] = context.currentLine;
       context.nodeStack.push({ node, indentLevel });
+      lastNode = node;
+      lastNodeIndent = indentLevel;
     } else {
       // Find parent based on indentation
       const parent = findParent(indentLevel, context.nodeStack);
@@ -241,6 +311,8 @@ export function parseText(text: string): ParseResult {
       context.nodeMap[nodeId] = node;
       context.nodeLineMap[nodeId] = context.currentLine;
       context.nodeStack.push({ node, indentLevel });
+      lastNode = node;
+      lastNodeIndent = indentLevel;
     }
   }
 

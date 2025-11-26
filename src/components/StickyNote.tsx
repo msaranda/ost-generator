@@ -1,6 +1,6 @@
 import { memo, useState, useRef, useEffect, useCallback } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
-import { X, Plus } from 'lucide-react';
+import { X, Plus, FileText } from 'lucide-react';
 import { OSTNode, NODE_SIZES, NodeType } from '../types';
 import { getNodeTypeLabel } from '../utils/nodeTypes';
 
@@ -22,12 +22,14 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
   const [editContent, setEditContent] = useState(data.content);
   const [originalContent, setOriginalContent] = useState(data.content);
   const [isHovered, setIsHovered] = useState(false);
+  const [showDescriptionTooltip, setShowDescriptionTooltip] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const size = NODE_SIZES[data.type as NodeType] || NODE_SIZES.opportunity;
   const isRoot = data.parentId === null;
   const isReadOnly = data.isReadOnly ?? false;
+  const hasDescription = !!data.description;
 
   // Cleanup save timeout on unmount
   useEffect(() => {
@@ -236,10 +238,24 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
 
       {/* Node type label - clicking selects node only */}
       <div
-        className="px-3 pt-2 pb-1 text-[10px] font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+        className="px-3 pt-2 pb-1 text-[10px] font-medium text-gray-500 uppercase tracking-wider cursor-pointer flex items-center justify-between"
         onClick={handleLabelClick}
       >
-        {getNodeTypeLabel(data.type as NodeType)}
+        <span>{getNodeTypeLabel(data.type as NodeType)}</span>
+        {hasDescription && (
+          <div
+            className="relative"
+            onMouseEnter={() => setShowDescriptionTooltip(true)}
+            onMouseLeave={() => setShowDescriptionTooltip(false)}
+          >
+            <FileText size={12} className="text-gray-400" />
+            {showDescriptionTooltip && (
+              <div className="absolute left-0 top-full mt-1 z-50 w-64 p-2 bg-gray-800 text-white text-xs rounded shadow-lg whitespace-pre-wrap">
+                {data.description}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Content area - clicking enters edit mode */}
