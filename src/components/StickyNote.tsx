@@ -23,7 +23,7 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
   const [originalContent, setOriginalContent] = useState(data.content);
   const [isHovered, setIsHovered] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const size = NODE_SIZES[data.type as NodeType] || NODE_SIZES.opportunity;
   const isRoot = data.parentId === null;
@@ -70,12 +70,12 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
   const handleTextChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newContent = e.target.value;
     setEditContent(newContent);
-    
+
     // Clear any pending save
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
-    
+
     // Debounce save - save after 500ms of no typing
     saveTimeoutRef.current = setTimeout(() => {
       if (newContent.trim() !== data.content && data.onTextSaved) {
@@ -91,7 +91,7 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
       clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
     }
-    
+
     setIsEditing(false);
     data.onEditingChange(false);
     if (editContent.trim() !== data.content) {
@@ -106,7 +106,7 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     // Stop propagation for all keyboard events in textarea to prevent global shortcuts
     e.stopPropagation();
-    
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleBlur();
@@ -235,7 +235,7 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
       )}
 
       {/* Node type label - clicking selects node only */}
-      <div 
+      <div
         className="px-3 pt-2 pb-1 text-[10px] font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
         onClick={handleLabelClick}
       >
@@ -243,7 +243,7 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
       </div>
 
       {/* Content area - clicking enters edit mode */}
-      <div 
+      <div
         className={`flex-1 flex items-center justify-center px-3 pb-3 ${isReadOnly ? 'cursor-default' : 'cursor-text'}`}
         onClick={handleContentClick}
       >

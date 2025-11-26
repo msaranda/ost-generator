@@ -5,7 +5,7 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { validateTreeJSON, parseValidatedData } from './utils/validation';
 import { exportToJSON, exportToJPG, readJSONFile } from './utils/exportHandlers';
 import { hasSharedTree, loadTreeFromUrl, clearTreeFromUrl } from './utils/urlSharing';
-import { ExportData, ValidationResult, TreeState } from './types';
+import { ExportData, ValidationResult } from './types';
 
 import Header from './components/Header';
 import Footer from './components/Footer';
@@ -133,6 +133,7 @@ function App() {
           parentId: null,
           children: [],
           position: { x: 0, y: 0 },
+          color: '#FFF9C4',
         },
       },
       selectedNodeId: null,
