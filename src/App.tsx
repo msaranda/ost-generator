@@ -50,20 +50,26 @@ function App() {
 
   // Refs
   const canvasRef = useRef<OSTCanvasHandle>(null);
+  const hasCheckedInitialLoad = useRef(false);
 
   // Auto-save
   const { lastSaved } = useAutoSave(tree);
 
-  // Check for shared tree in URL or autosave on mount
+  // Check for shared tree in URL or autosave on mount (runs only once)
   useEffect(() => {
+    // Guard to prevent multiple runs
+    if (hasCheckedInitialLoad.current) return;
+    hasCheckedInitialLoad.current = true;
+
     // Priority: URL tree > autosave > default tree
     if (hasSharedTree()) {
       try {
         const sharedTree = loadTreeFromUrl();
         if (sharedTree) {
           importTree(sharedTree);
-          // Clear the URL parameter after loading to allow autosave to work
+          // Clear both URL parameter and autosave when loading shared tree
           clearTreeFromUrl();
+          clearAutosave();
           return; // Skip autosave check if URL tree was loaded
         }
       } catch (error) {
@@ -84,7 +90,8 @@ function App() {
       });
       setShowRestoreModal(true);
     }
-  }, [importTree]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Handle restore
   const handleRestore = useCallback(() => {
@@ -97,6 +104,7 @@ function App() {
   const handleDiscardRestore = useCallback(() => {
     clearAutosave();
     setPendingRestoreTree(null);
+    setShowRestoreModal(false);
   }, []);
 
   // Handle import
