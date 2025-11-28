@@ -1,9 +1,101 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { EditorView } from '@codemirror/view';
-import { EditorState } from '@codemirror/state';
+import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate } from '@codemirror/view';
+import { EditorState, Extension, RangeSetBuilder } from '@codemirror/state';
 import { ValidationError } from '../utils/textParser';
+
+/**
+ * Syntax highlighting extension for OST node prefixes
+ * Highlights node type prefixes with their corresponding colors:
+ * - O:, OUTCOME: → yellow (#F9A825)
+ * - OP:, OPP: → blue (#1976D2)
+ * - S:, SOL: → green (#388E3C)
+ * - SU:, SUB: → purple (#7B1FA2)
+ */
+function syntaxHighlightingExtension(): Extension {
+  // Define decoration marks for each node type
+  const outcomeMark = Decoration.mark({ class: 'cm-ost-outcome' });
+  const opportunityMark = Decoration.mark({ class: 'cm-ost-opportunity' });
+  const solutionMark = Decoration.mark({ class: 'cm-ost-solution' });
+  const subOpportunityMark = Decoration.mark({ class: 'cm-ost-sub-opportunity' });
+
+  // Regex patterns for each prefix type
+  const patterns = [
+    { regex: /^(\s*)(OUTCOME:|O:)/g, mark: outcomeMark },
+    { regex: /^(\s*)(OPP:|OP:)/g, mark: opportunityMark },
+    { regex: /^(\s*)(SOL:|S:)/g, mark: solutionMark },
+    { regex: /^(\s*)(SUB:|SU:)/g, mark: subOpportunityMark },
+  ];
+
+  const viewPlugin = ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+
+      constructor(view: EditorView) {
+        this.decorations = this.buildDecorations(view);
+      }
+
+      update(update: ViewUpdate) {
+        if (update.docChanged || update.viewportChanged) {
+          this.decorations = this.buildDecorations(update.view);
+        }
+      }
+
+      buildDecorations(view: EditorView): DecorationSet {
+        const builder = new RangeSetBuilder<Decoration>();
+        const doc = view.state.doc;
+
+        for (let lineNum = 1; lineNum <= doc.lines; lineNum++) {
+          const line = doc.line(lineNum);
+          const lineText = line.text;
+
+          // Check each pattern
+          for (const { regex, mark } of patterns) {
+            // Reset regex state
+            regex.lastIndex = 0;
+            const match = regex.exec(lineText);
+
+            if (match) {
+              // match[1] is the whitespace, match[2] is the prefix
+              const prefixStart = line.from + match[1].length;
+              const prefixEnd = prefixStart + match[2].length;
+              builder.add(prefixStart, prefixEnd, mark);
+              break; // Only match one prefix per line
+            }
+          }
+        }
+
+        return builder.finish();
+      }
+    },
+    {
+      decorations: (v) => v.decorations,
+    }
+  );
+
+  // Define CSS styles for the highlighting
+  const theme = EditorView.theme({
+    '.cm-ost-outcome': {
+      color: '#F9A825',
+      fontWeight: 'bold',
+    },
+    '.cm-ost-opportunity': {
+      color: '#1976D2',
+      fontWeight: 'bold',
+    },
+    '.cm-ost-solution': {
+      color: '#388E3C',
+      fontWeight: 'bold',
+    },
+    '.cm-ost-sub-opportunity': {
+      color: '#7B1FA2',
+      fontWeight: 'bold',
+    },
+  });
+
+  return [viewPlugin, theme];
+}
 
 interface CodeMirrorEditorProps {
   // Input: text document
@@ -54,6 +146,7 @@ export default function CodeMirrorEditor({
     const startState = EditorState.create({
       doc: value,
       extensions: [
+        syntaxHighlightingExtension(),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             const newValue = update.state.doc.toString();
@@ -118,6 +211,7 @@ export default function CodeMirrorEditor({
       doc: currentValue,
       selection: currentSelection,
       extensions: [
+        syntaxHighlightingExtension(),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             const newValue = update.state.doc.toString();
