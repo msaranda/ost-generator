@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate, gutter, GutterMarker, hoverTooltip, keymap } from '@codemirror/view';
 import { EditorState, Extension, RangeSetBuilder, StateField, StateEffect } from '@codemirror/state';
+import { autocompletion, CompletionContext, CompletionResult } from '@codemirror/autocomplete';
 import { ValidationError } from '../utils/textParser';
 
 /**
@@ -244,6 +245,69 @@ function indentationExtension(): Extension {
   ]);
 
   return [indentKeymap];
+}
+
+/**
+ * Autocomplete extension for node prefixes
+ * Provides auto-complete suggestions for node type prefixes:
+ * - "O" at line start → ["O:", "OP:"]
+ * - "S" at line start → ["S:", "SU:"]
+ * Accepts suggestions with Tab or Enter, dismisses with Escape
+ */
+function autocompleteExtension(): Extension {
+  // Completion source function
+  const completionSource = (context: CompletionContext): CompletionResult | null => {
+    const { state, pos } = context;
+    const line = state.doc.lineAt(pos);
+    const lineText = line.text;
+    const cursorCol = pos - line.from;
+
+    // Get text before cursor on this line
+    const beforeCursor = lineText.substring(0, cursorCol);
+
+    // Check if we're at the start of the line (only whitespace before cursor)
+    const leadingWhitespace = beforeCursor.match(/^(\s*)/)?.[1] || '';
+    const textBeforeWhitespace = beforeCursor.substring(leadingWhitespace.length);
+
+    // Only trigger if we're at line start (after optional whitespace)
+    if (textBeforeWhitespace.length === 0 || textBeforeWhitespace.length > 3) {
+      return null;
+    }
+
+    // Check for "O" prefix
+    if (textBeforeWhitespace === 'O' || textBeforeWhitespace === 'OP') {
+      const from = line.from + leadingWhitespace.length;
+      return {
+        from,
+        options: [
+          { label: 'O:', type: 'keyword', info: 'Outcome node' },
+          { label: 'OP:', type: 'keyword', info: 'Opportunity node' },
+        ],
+      };
+    }
+
+    // Check for "S" prefix
+    if (textBeforeWhitespace === 'S' || textBeforeWhitespace === 'SU') {
+      const from = line.from + leadingWhitespace.length;
+      return {
+        from,
+        options: [
+          { label: 'S:', type: 'keyword', info: 'Solution node' },
+          { label: 'SU:', type: 'keyword', info: 'Sub-opportunity node' },
+        ],
+      };
+    }
+
+    return null;
+  };
+
+  // Configure autocompletion
+  return autocompletion({
+    override: [completionSource],
+    activateOnTyping: true,
+    closeOnBlur: true,
+    defaultKeymap: true, // Enables Tab/Enter to accept, Escape to dismiss
+  });
 }
 
 /**
@@ -503,6 +567,7 @@ export default function CodeMirrorEditor({
         syntaxHighlightingExtension(),
         diagnosticsExtension(),
         indentationExtension(),
+        autocompleteExtension(),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             const newValue = update.state.doc.toString();
