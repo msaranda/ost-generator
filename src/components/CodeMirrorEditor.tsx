@@ -582,6 +582,103 @@ function foldingExtension(): Extension {
 }
 
 /**
+ * Line selection highlighting extension
+ * Implements line highlighting based on selectedLine prop:
+ * - Highlights the selected line with a distinct background color
+ * - Scrolls to make the selected line visible
+ * - Updates highlighting when selectedLine prop changes
+ * - Clears highlighting when selectedLine is null
+ */
+
+// State effect for updating selected line
+const setSelectedLineEffect = StateEffect.define<number | null>();
+
+// State field to store current selected line
+const selectedLineState = StateField.define<number | null>({
+  create: () => null,
+  update(selectedLine, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setSelectedLineEffect)) {
+        return effect.value;
+      }
+    }
+    return selectedLine;
+  },
+});
+
+function lineSelectionExtension(): Extension {
+  // View plugin for line highlighting
+  const highlightPlugin = ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+
+      constructor(view: EditorView) {
+        this.decorations = this.buildDecorations(view);
+      }
+
+      update(update: ViewUpdate) {
+        if (update.state.field(selectedLineState) !== update.startState.field(selectedLineState)) {
+          this.decorations = this.buildDecorations(update.view);
+          
+          // Scroll to selected line when it changes (defer to avoid update conflicts)
+          const selectedLine = update.state.field(selectedLineState);
+          if (selectedLine !== null) {
+            // Use setTimeout to defer scrolling until after the current update cycle
+            setTimeout(() => this.scrollToLine(update.view, selectedLine), 0);
+          }
+        }
+      }
+
+      buildDecorations(view: EditorView): DecorationSet {
+        const builder = new RangeSetBuilder<Decoration>();
+        const selectedLine = view.state.field(selectedLineState);
+        const doc = view.state.doc;
+
+        if (selectedLine !== null && selectedLine >= 1 && selectedLine <= doc.lines) {
+          try {
+            const line = doc.line(selectedLine);
+            const lineMark = Decoration.line({
+              class: 'cm-selected-line',
+            });
+            builder.add(line.from, line.from, lineMark);
+          } catch (e) {
+            console.warn('Invalid selected line:', selectedLine, e);
+          }
+        }
+
+        return builder.finish();
+      }
+
+      scrollToLine(view: EditorView, lineNumber: number) {
+        try {
+          const doc = view.state.doc;
+          if (lineNumber >= 1 && lineNumber <= doc.lines) {
+            const line = doc.line(lineNumber);
+            view.dispatch({
+              effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
+            });
+          }
+        } catch (e) {
+          console.warn('Failed to scroll to line:', lineNumber, e);
+        }
+      }
+    },
+    {
+      decorations: (v) => v.decorations,
+    }
+  );
+
+  // Theme for selected line
+  const theme = EditorView.theme({
+    '.cm-selected-line': {
+      backgroundColor: '#E3F2FD !important',
+    },
+  });
+
+  return [selectedLineState, highlightPlugin, theme];
+}
+
+/**
  * Keyboard shortcuts extension for standard editor commands
  * Implements standard keyboard shortcuts:
  * - Cmd/Ctrl+Z for undo (CodeMirror default)
@@ -646,10 +743,7 @@ export default function CodeMirrorEditor({
   const [isClient, setIsClient] = useState(false);
 
   // Suppress unused variable warnings for future implementation
-  // @ts-ignore - selectedLine will be used in task 9 (line selection highlighting)
-  selectedLine;
-  // @ts-ignore - onLineClick will be used in task 10 (cursor position tracking)
-  onLineClick;
+  void onLineClick; // Will be used in task 10 (cursor position tracking)
 
   // Ensure we're on the client
   useEffect(() => {
@@ -671,6 +765,7 @@ export default function CodeMirrorEditor({
         diagnosticsExtension(),
         indentationExtension(),
         autocompleteExtension(),
+        lineSelectionExtension(),
         keyboardShortcutsExtension(),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
@@ -732,6 +827,15 @@ export default function CodeMirrorEditor({
       effects: setDiagnosticsEffect.of(diagnostics),
     });
   }, [diagnostics, isClient]);
+
+  // Update selected line when it changes
+  useEffect(() => {
+    if (!viewRef.current || !isClient) return;
+    
+    viewRef.current.dispatch({
+      effects: setSelectedLineEffect.of(selectedLine),
+    });
+  }, [selectedLine, isClient]);
 
   // Note: We don't need a separate effect for read-only mode changes
   // because we're using EditorView.editable.of() and EditorState.readOnly.of()

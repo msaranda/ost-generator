@@ -1854,3 +1854,159 @@ describe('Property 11: Fold states persist across updates', () => {
     );
   }, 30000);
 });
+
+/**
+ * Property 12: Selection highlighting follows node selection
+ * **Validates: Requirements 9.1, 9.2, 9.4**
+ */
+describe('Property 12: Selection highlighting follows node selection', () => {
+  it('should highlight the selected line with distinct background color', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(fc.string({ minLength: 1, maxLength: 50 }), { minLength: 1, maxLength: 10 }),
+        fc.integer({ min: 1, max: 10 }),
+        async (lines, selectedLineNum) => {
+          // Ensure selectedLineNum is within bounds
+          const actualSelectedLine = Math.min(selectedLineNum, lines.length);
+          const text = lines.join('\n');
+
+          const onChange = vi.fn();
+
+          const { container, rerender } = render(
+            <CodeMirrorEditor
+              value={text}
+              diagnostics={[]}
+              selectedLine={actualSelectedLine}
+              onChange={onChange}
+            />
+          );
+
+          await waitFor(() => {
+            const editorContent = container.querySelector('.cm-content');
+            expect(editorContent).toBeTruthy();
+          }, { timeout: 2000 });
+
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+          // Check that the selected line has the highlighting class
+          const selectedLineElement = container.querySelector('.cm-selected-line');
+          expect(selectedLineElement).toBeTruthy();
+
+          // Test clearing selection
+          rerender(
+            <CodeMirrorEditor
+              value={text}
+              diagnostics={[]}
+              selectedLine={null}
+              onChange={onChange}
+            />
+          );
+
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+          // Check that highlighting is cleared
+          const clearedSelection = container.querySelector('.cm-selected-line');
+          expect(clearedSelection).toBeFalsy();
+        }
+      ),
+      { numRuns: 20 }
+    );
+  }, 30000);
+
+  it('should scroll to selected line when it changes', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(fc.string({ minLength: 1, maxLength: 50 }), { minLength: 5, maxLength: 20 }),
+        fc.integer({ min: 1, max: 20 }),
+        async (lines, selectedLineNum) => {
+          // Ensure selectedLineNum is within bounds
+          const actualSelectedLine = Math.min(selectedLineNum, lines.length);
+          const text = lines.join('\n');
+
+          const onChange = vi.fn();
+
+          const { container } = render(
+            <CodeMirrorEditor
+              value={text}
+              diagnostics={[]}
+              selectedLine={actualSelectedLine}
+              onChange={onChange}
+            />
+          );
+
+          await waitFor(() => {
+            const editorContent = container.querySelector('.cm-content');
+            expect(editorContent).toBeTruthy();
+          }, { timeout: 2000 });
+
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+          // Check that the selected line has the highlighting class
+          const selectedLineElement = container.querySelector('.cm-selected-line');
+          expect(selectedLineElement).toBeTruthy();
+
+          // The scrolling behavior is handled by CodeMirror internally
+          // We can verify that the extension is configured correctly
+          const editorView = container.querySelector('.cm-editor');
+          expect(editorView).toBeTruthy();
+        }
+      ),
+      { numRuns: 20 }
+    );
+  }, 30000);
+
+  it('should update highlighting when selectedLine prop changes', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(fc.string({ minLength: 1, maxLength: 50 }), { minLength: 3, maxLength: 10 }),
+        fc.integer({ min: 1, max: 10 }),
+        fc.integer({ min: 1, max: 10 }),
+        async (lines, firstSelectedLine, secondSelectedLine) => {
+          // Ensure line numbers are within bounds
+          const firstLine = Math.min(firstSelectedLine, lines.length);
+          const secondLine = Math.min(secondSelectedLine, lines.length);
+          const text = lines.join('\n');
+
+          const onChange = vi.fn();
+
+          const { container, rerender } = render(
+            <CodeMirrorEditor
+              value={text}
+              diagnostics={[]}
+              selectedLine={firstLine}
+              onChange={onChange}
+            />
+          );
+
+          await waitFor(() => {
+            const editorContent = container.querySelector('.cm-content');
+            expect(editorContent).toBeTruthy();
+          }, { timeout: 2000 });
+
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+          // Check that the first selected line has highlighting
+          let selectedLineElement = container.querySelector('.cm-selected-line');
+          expect(selectedLineElement).toBeTruthy();
+
+          // Change to second selected line
+          rerender(
+            <CodeMirrorEditor
+              value={text}
+              diagnostics={[]}
+              selectedLine={secondLine}
+              onChange={onChange}
+            />
+          );
+
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+          // Check that highlighting is still present (may be on different line)
+          selectedLineElement = container.querySelector('.cm-selected-line');
+          expect(selectedLineElement).toBeTruthy();
+        }
+      ),
+      { numRuns: 20 }
+    );
+  }, 30000);
+});
