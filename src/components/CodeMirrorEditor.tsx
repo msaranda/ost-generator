@@ -5,6 +5,8 @@ import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate, gutter, 
 import { EditorState, Extension, RangeSetBuilder, StateField, StateEffect } from '@codemirror/state';
 import { autocompletion, CompletionContext, CompletionResult } from '@codemirror/autocomplete';
 import { foldGutter, codeFolding } from '@codemirror/language';
+import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
+import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
 import { ValidationError } from '../utils/textParser';
 
 /**
@@ -579,6 +581,34 @@ function foldingExtension(): Extension {
   ];
 }
 
+/**
+ * Keyboard shortcuts extension for standard editor commands
+ * Implements standard keyboard shortcuts:
+ * - Cmd/Ctrl+Z for undo (CodeMirror default)
+ * - Cmd/Ctrl+Shift+Z for redo (CodeMirror default)
+ * - Cmd/Ctrl+A for select all (CodeMirror default)
+ * - Cmd/Ctrl+F for find (CodeMirror search extension)
+ * Ensures shortcuts don't interfere with app shortcuts
+ */
+function keyboardShortcutsExtension(): Extension {
+  return [
+    // History support (enables undo/redo)
+    history(),
+    
+    // Default keymap includes Cmd/Ctrl+A for select all and other basic shortcuts
+    keymap.of(defaultKeymap),
+    
+    // History keymap includes Cmd/Ctrl+Z for undo and Cmd/Ctrl+Shift+Z for redo
+    keymap.of(historyKeymap),
+    
+    // Search keymap includes Cmd/Ctrl+F for find
+    keymap.of(searchKeymap),
+    
+    // Highlight selection matches when searching
+    highlightSelectionMatches(),
+  ];
+}
+
 interface CodeMirrorEditorProps {
   // Input: text document
   value: string;
@@ -615,6 +645,12 @@ export default function CodeMirrorEditor({
   const viewRef = useRef<EditorView | null>(null);
   const [isClient, setIsClient] = useState(false);
 
+  // Suppress unused variable warnings for future implementation
+  // @ts-ignore - selectedLine will be used in task 9 (line selection highlighting)
+  selectedLine;
+  // @ts-ignore - onLineClick will be used in task 10 (cursor position tracking)
+  onLineClick;
+
   // Ensure we're on the client
   useEffect(() => {
     setIsClient(true);
@@ -635,6 +671,7 @@ export default function CodeMirrorEditor({
         diagnosticsExtension(),
         indentationExtension(),
         autocompleteExtension(),
+        keyboardShortcutsExtension(),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             const newValue = update.state.doc.toString();
