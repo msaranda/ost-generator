@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate, gutter, GutterMarker, hoverTooltip, keymap } from '@codemirror/view';
+import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate, gutter, GutterMarker, hoverTooltip, keymap, lineNumbers } from '@codemirror/view';
 import { EditorState, Extension, RangeSetBuilder, StateField, StateEffect } from '@codemirror/state';
 import { autocompletion, CompletionContext, CompletionResult } from '@codemirror/autocomplete';
+import { foldGutter, codeFolding } from '@codemirror/language';
 import { ValidationError } from '../utils/textParser';
 
 /**
@@ -515,6 +516,69 @@ function diagnosticsExtension(): Extension {
   return [diagnosticsState, underlinePlugin, gutterMarkers, tooltipExtension, theme];
 }
 
+/**
+ * Line numbers theme extension
+ * Styles the line numbers gutter to match the design
+ */
+function lineNumbersTheme(): Extension {
+  return EditorView.theme({
+    '.cm-gutters': {
+      backgroundColor: '#F5F5F5',
+      borderRight: '1px solid #E0E0E0',
+      color: '#BDBDBD',
+    },
+    '.cm-lineNumbers': {
+      fontSize: '12px',
+      minWidth: '2.5em',
+      paddingRight: '0.5em',
+    },
+    '.cm-lineNumbers .cm-gutterElement': {
+      textAlign: 'right',
+    },
+  });
+}
+
+/**
+ * Folding extension for OST indentation-based structure
+ * Implements folding based on indentation levels:
+ * - Fold icons appear for parent nodes (lines with child nodes)
+ * - Folding collapses child lines
+ * - Folded sections show indicators
+ * - Fold state persists across updates
+ */
+function foldingExtension(): Extension {
+  // Theme for folding elements
+  const foldingTheme = EditorView.theme({
+    '.cm-foldGutter': {
+      width: '1.5em',
+    },
+    '.cm-foldGutter .cm-gutterElement': {
+      textAlign: 'center',
+      cursor: 'pointer',
+    },
+    '.cm-foldPlaceholder': {
+      backgroundColor: '#E3F2FD',
+      border: '1px solid #BBDEFB',
+      borderRadius: '3px',
+      color: '#1976D2',
+      padding: '0 0.25em',
+      margin: '0 0.25em',
+      fontSize: '0.8em',
+    },
+  });
+
+  return [
+    codeFolding({
+      placeholderText: '...',
+    }),
+    foldGutter({
+      openText: '▼',
+      closedText: '▶',
+    }),
+    foldingTheme,
+  ];
+}
+
 interface CodeMirrorEditorProps {
   // Input: text document
   value: string;
@@ -564,6 +628,9 @@ export default function CodeMirrorEditor({
     const startState = EditorState.create({
       doc: value,
       extensions: [
+        lineNumbers(),
+        lineNumbersTheme(),
+        foldingExtension(),
         syntaxHighlightingExtension(),
         diagnosticsExtension(),
         indentationExtension(),
