@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { TreeState } from '../types';
-import TextEditor from './TextEditor';
+import CodeMirrorEditor from './CodeMirrorEditor';
 import { useTextEditor } from '../hooks/useTextEditor';
 import { useTreeSerializer } from '../hooks/useTreeSerializer';
 
@@ -36,13 +36,11 @@ export default function TextEditorPanel({
 }: TextEditorPanelProps) {
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
-  const [foldedLines, setFoldedLines] = useState<Set<number>>(new Set());
   const [nodeLineMap, setNodeLineMap] = useState<Record<string, number>>({});
   
   const panelRef = useRef<HTMLDivElement>(null);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
-  const editorScrollRef = useRef<number>(0);
 
   // Text editor hook - handles text changes and parsing
   const {
@@ -69,18 +67,7 @@ export default function TextEditorPanel({
   const { nodeLineMap: serializedNodeLineMap } = useTreeSerializer({
     tree,
     onTextUpdate: (text) => {
-      // Preserve scroll position
-      const scrollPos = editorScrollRef.current;
       setTextContent(text);
-      // Restore scroll position after update
-      setTimeout(() => {
-        if (panelRef.current) {
-          const editorElement = panelRef.current.querySelector('.text-editor-content');
-          if (editorElement) {
-            editorElement.scrollTop = scrollPos;
-          }
-        }
-      }, 0);
     },
   });
 
@@ -132,28 +119,10 @@ export default function TextEditorPanel({
     setCursorPosition(position);
   }, [setCursorPosition]);
 
-  // Track scroll position
-  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    editorScrollRef.current = e.currentTarget.scrollTop;
-  }, []);
-
   // Calculate selected line from selectedNodeId
   const selectedLine = selectedNodeId && nodeLineMap[selectedNodeId] 
     ? nodeLineMap[selectedNodeId] 
     : null;
-
-  // Handle fold toggle
-  const handleToggleFold = useCallback((line: number) => {
-    setFoldedLines(prev => {
-      const next = new Set(prev);
-      if (next.has(line)) {
-        next.delete(line);
-      } else {
-        next.add(line);
-      }
-      return next;
-    });
-  }, []);
 
   // Handle line click - select corresponding node
   const handleLineClick = useCallback((line: number) => {
@@ -167,18 +136,6 @@ export default function TextEditorPanel({
       }
     }
   }, [nodeLineMap, onSelectNode, canvasRef]);
-
-  // Scroll to selected line when selection changes
-  useEffect(() => {
-    if (selectedLine !== null && panelRef.current) {
-      const editorElement = panelRef.current.querySelector('.text-editor-content');
-      if (editorElement) {
-        const lineHeight = 22.4; // 14px font * 1.6 line-height
-        const targetScroll = (selectedLine - 1) * lineHeight - editorElement.clientHeight / 2;
-        editorElement.scrollTop = Math.max(0, targetScroll);
-      }
-    }
-  }, [selectedLine]);
 
   if (!isVisible) return null;
 
@@ -208,19 +165,16 @@ export default function TextEditorPanel({
       {/* Text Editor */}
       <main 
         className="flex-1 overflow-hidden" 
-        onScroll={handleScroll}
         role="main"
         aria-labelledby="text-editor-title"
       >
-        <TextEditor
-          content={textContent}
+        <CodeMirrorEditor
+          value={textContent}
           onChange={handleTextChange}
           onCursorChange={handleCursorChange}
           selectedLine={selectedLine}
-          validationErrors={validationErrors}
-          isReadOnly={isReadOnly}
-          foldedLines={foldedLines}
-          onToggleFold={handleToggleFold}
+          diagnostics={validationErrors}
+          readOnly={isReadOnly}
           onLineClick={handleLineClick}
         />
       </main>
