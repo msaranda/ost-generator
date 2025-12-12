@@ -740,9 +740,8 @@ describe('Property 6: Indentation commands modify spacing correctly', () => {
           content: fc.string({ minLength: 1, maxLength: 30 }),
           indentLevel: fc.integer({ min: 0, max: 5 }),
         }),
-        async ({ prefix, content, indentLevel }) => {
+        async ({ indentLevel }) => {
           const indentation = '  '.repeat(indentLevel);
-          const text = `${indentation}${prefix} ${content}`;
           
           // Verify indentation is at a valid boundary (multiple of 2)
           expect(indentation.length % 2).toBe(0);
@@ -2009,4 +2008,185 @@ describe('Property 12: Selection highlighting follows node selection', () => {
       { numRuns: 20 }
     );
   }, 30000);
+});
+
+/**
+ * Feature: code-editor-modernization, Property 13: Visual edits generate text transactions
+ * Validates: Requirements 10.1, 10.2
+ * 
+ * For any edit made in the visual tree, the application should generate a text patch 
+ * and apply it to the editor using a CodeMirror transaction
+ */
+describe('Property 13: Visual edits generate text transactions', () => {
+  it('should apply external text changes via transactions', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        // Generate initial text and a change to apply
+        fc.record({
+          initialText: fc.string({ minLength: 10, maxLength: 100 }),
+          changeFrom: fc.integer({ min: 0, max: 50 }),
+          changeTo: fc.integer({ min: 0, max: 50 }),
+          insertText: fc.string({ minLength: 0, maxLength: 50 }),
+        }),
+        async ({ initialText, changeFrom, changeTo, insertText }) => {
+          // Ensure valid change bounds
+          const from = Math.min(changeFrom, initialText.length);
+          const to = Math.min(Math.max(changeTo, from), initialText.length);
+          
+          const onChange = vi.fn();
+          let editorRef: any = null;
+
+          const { rerender } = render(
+            <CodeMirrorEditor
+              ref={(ref) => { editorRef = ref; }}
+              value={initialText}
+              diagnostics={[]}
+              selectedLine={null}
+              onChange={onChange}
+            />
+          );
+
+          // Wait for editor to initialize
+          await waitFor(() => {
+            expect(editorRef).toBeTruthy();
+            expect(editorRef.applyTransaction).toBeTruthy();
+          });
+
+          // Apply transaction via imperative handle
+          const changes = [{ from, to, insert: insertText }];
+          editorRef.applyTransaction(changes, true);
+
+          // Wait for change to be processed
+          await waitFor(() => {
+            expect(onChange).toHaveBeenCalled();
+          });
+
+          // Verify the text was changed correctly
+          const expectedText = initialText.slice(0, from) + insertText + initialText.slice(to);
+          expect(onChange).toHaveBeenCalledWith(expectedText);
+        }
+      ),
+      { numRuns: 5 }
+    );
+  }, 10000);
+});
+
+/**
+ * Feature: code-editor-modernization, Property 14: Transactions preserve cursor position
+ * Validates: Requirements 10.3
+ * 
+ * For any transaction applied to the editor, the cursor position should either be preserved 
+ * or updated to a logical position (e.g., end of inserted text)
+ */
+describe('Property 14: Transactions preserve cursor position', () => {
+  it('should preserve cursor position when inserting before cursor', async () => {
+    const initialText = 'Hello world\nSecond line';
+    const onChange = vi.fn();
+    let editorRef: any = null;
+
+    render(
+      <CodeMirrorEditor
+        ref={(ref) => { editorRef = ref; }}
+        value={initialText}
+        diagnostics={[]}
+        selectedLine={null}
+        onChange={onChange}
+      />
+    );
+
+    // Wait for editor to initialize
+    await waitFor(() => {
+      expect(editorRef).toBeTruthy();
+      expect(editorRef.setCursorPosition).toBeTruthy();
+      expect(editorRef.getCursorPosition).toBeTruthy();
+    });
+
+    // Set cursor at position (2, 5) - middle of second line
+    editorRef.setCursorPosition(2, 5);
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // Get cursor position before change
+    const beforeCursor = editorRef.getCursorPosition();
+    expect(beforeCursor.line).toBe(2);
+    expect(beforeCursor.column).toBe(5);
+
+    // Insert text at the beginning of the document
+    const changes = [{ from: 0, to: 0, insert: 'PREFIX: ' }];
+    editorRef.applyTransaction(changes, true);
+
+    // Wait for change to be processed
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalled();
+    });
+
+    // Get cursor position after change
+    const afterCursor = editorRef.getCursorPosition();
+    expect(afterCursor).toBeTruthy();
+
+    // Cursor should have moved by the length of the inserted text
+    expect(afterCursor.line).toBe(2);
+    expect(afterCursor.column).toBe(5 + 'PREFIX: '.length);
+  });
+});/
+**
+ * Feature: code-editor-modernization, Property 15: Transactions are undoable
+ * Validates: Requirements 10.4
+ * 
+ * For any transaction applied to the editor, pressing Cmd/Ctrl+Z should undo the change
+ */
+describe('Property 15: Transactions are undoable', () => {
+  it('should undo transactions when Ctrl+Z is pressed', async () => {
+    const initialText = 'Hello world\nSecond line';
+    const onChange = vi.fn();
+    let editorRef: any = null;
+
+    const { container } = render(
+      <CodeMirrorEditor
+        ref={(ref) => { editorRef = ref; }}
+        value={initialText}
+        diagnostics={[]}
+        selectedLine={null}
+        onChange={onChange}
+      />
+    );
+
+    // Wait for editor to initialize
+    await waitFor(() => {
+      expect(editorRef).toBeTruthy();
+      expect(editorRef.applyTransaction).toBeTruthy();
+    });
+
+    // Apply a transaction
+    const changes = [{ from: 0, to: 0, insert: 'PREFIX: ' }];
+    editorRef.applyTransaction(changes, true);
+
+    // Wait for change to be processed
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalledWith('PREFIX: Hello world\nSecond line');
+    });
+
+    // Clear the onChange mock
+    onChange.mockClear();
+
+    // Find the editor content element and simulate Ctrl+Z
+    const editorContent = container.querySelector('.cm-content');
+    expect(editorContent).toBeTruthy();
+
+    // Simulate Ctrl+Z keydown event
+    const undoEvent = new KeyboardEvent('keydown', {
+      key: 'z',
+      ctrlKey: true,
+      bubbles: true,
+    });
+
+    editorContent!.dispatchEvent(undoEvent);
+
+    // Wait for undo to be processed
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalledWith(initialText);
+    }, { timeout: 2000 });
+
+    // Verify the text was reverted
+    expect(onChange).toHaveBeenCalledWith('Hello world\nSecond line');
+  });
 });

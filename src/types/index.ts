@@ -1,5 +1,9 @@
 // Node types for the OST tree
-export type NodeType = 'outcome' | 'opportunity' | 'solution' | 'sub-opportunity';
+export type NodeType =
+  | "outcome"
+  | "opportunity"
+  | "solution"
+  | "sub-opportunity";
 
 // Individual node in the tree
 export interface OSTNode {
@@ -24,7 +28,7 @@ export interface TreeState {
 export interface UIState {
   zoom: number;
   pan: { x: number; y: number };
-  layoutMode: 'auto' | 'manual';
+  layoutMode: "auto" | "manual";
 }
 
 // Combined app state
@@ -46,35 +50,41 @@ export interface ExportData {
 
 // Action types for tree reducer
 export type TreeAction =
-  | { type: 'ADD_NODE'; payload: { parentId: string; nodeType?: NodeType } }
-  | { type: 'UPDATE_NODE'; payload: { id: string; content: string } }
-  | { type: 'DELETE_NODE'; payload: { id: string } }
-  | { type: 'SELECT_NODE'; payload: { id: string | null } }
-  | { type: 'IMPORT_TREE'; payload: { tree: TreeState } }
-  | { type: 'UPDATE_POSITIONS'; payload: { positions: Record<string, { x: number; y: number }> } }
-  | { type: 'MOVE_NODE'; payload: { id: string; position: { x: number; y: number } } };
+  | { type: "ADD_NODE"; payload: { parentId: string; nodeType?: NodeType } }
+  | { type: "UPDATE_NODE"; payload: { id: string; content: string } }
+  | { type: "DELETE_NODE"; payload: { id: string } }
+  | { type: "SELECT_NODE"; payload: { id: string | null } }
+  | { type: "IMPORT_TREE"; payload: { tree: TreeState } }
+  | {
+      type: "UPDATE_POSITIONS";
+      payload: { positions: Record<string, { x: number; y: number }> };
+    }
+  | {
+      type: "MOVE_NODE";
+      payload: { id: string; position: { x: number; y: number } };
+    };
 
 // Node size configurations
 export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
-  'outcome': { width: 200, height: 150 },
-  'opportunity': { width: 180, height: 120 },
-  'solution': { width: 160, height: 100 },
-  'sub-opportunity': { width: 180, height: 120 },
+  outcome: { width: 350, height: 200 },
+  opportunity: { width: 320, height: 180 },
+  solution: { width: 300, height: 160 },
+  "sub-opportunity": { width: 320, height: 180 },
 };
 
 // Node color configurations
 export const NODE_COLORS: Record<NodeType, string> = {
-  'outcome': '#FFF9C4',
-  'opportunity': '#BBDEFB',
-  'solution': '#C8E6C9',
-  'sub-opportunity': '#E1BEE7',
+  outcome: "#FFF9C4",
+  opportunity: "#BBDEFB",
+  solution: "#C8E6C9",
+  "sub-opportunity": "#E1BEE7",
 };
 
 // Layout constants
 export const LAYOUT_CONFIG = {
-  LEVEL_HEIGHT: 180,
-  NODE_SPACING: 40,
-  MIN_NODE_SPACING: 20,
+  LEVEL_HEIGHT: 280,
+  NODE_SPACING: 120,
+  MIN_NODE_SPACING: 80,
 };
 
 // Validation error types
@@ -87,4 +97,3 @@ export interface ValidationResult {
   valid: boolean;
   errors: ValidationError[];
 }
-

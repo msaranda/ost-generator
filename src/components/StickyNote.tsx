@@ -1,8 +1,8 @@
-import { memo, useState, useRef, useEffect, useCallback } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
-import { X, Plus, FileText } from 'lucide-react';
-import { OSTNode, NODE_SIZES, NodeType } from '../types';
-import { getNodeTypeLabel } from '../utils/nodeTypes';
+import { memo, useState, useRef, useEffect, useCallback } from "react";
+import { Handle, Position, NodeProps } from "reactflow";
+import { X, Plus, FileText } from "lucide-react";
+import { OSTNode, NODE_SIZES, NodeType } from "../types";
+import { getNodeTypeLabel } from "../utils/nodeTypes";
 
 interface StickyNoteData extends OSTNode {
   onUpdate: (id: string, content: string) => void;
@@ -69,23 +69,26 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
   }, [data.shouldTriggerEdit, isReadOnly, isEditing, data]);
 
   // Handle text change with debounced save
-  const handleTextChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newContent = e.target.value;
-    setEditContent(newContent);
+  const handleTextChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const newContent = e.target.value;
+      setEditContent(newContent);
 
-    // Clear any pending save
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-
-    // Debounce save - save after 500ms of no typing
-    saveTimeoutRef.current = setTimeout(() => {
-      if (newContent.trim() !== data.content && data.onTextSaved) {
-        data.onUpdate(data.id, newContent.trim() || data.content);
-        data.onTextSaved();
+      // Clear any pending save
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
       }
-    }, 500);
-  }, [data]);
+
+      // Debounce save - save after 500ms of no typing
+      saveTimeoutRef.current = setTimeout(() => {
+        if (newContent.trim() !== data.content && data.onTextSaved) {
+          data.onUpdate(data.id, newContent.trim() || data.content);
+          data.onTextSaved();
+        }
+      }, 500);
+    },
+    [data],
+  );
 
   const handleBlur = useCallback(() => {
     // Clear any pending debounced save
@@ -105,79 +108,94 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
     }
   }, [editContent, data]);
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    // Stop propagation for all keyboard events in textarea to prevent global shortcuts
-    e.stopPropagation();
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      // Stop propagation for all keyboard events in textarea to prevent global shortcuts
+      e.stopPropagation();
 
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleBlur();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      // Clear any pending debounced save to prevent saving intermediate changes
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = null;
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleBlur();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        // Clear any pending debounced save to prevent saving intermediate changes
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current);
+          saveTimeoutRef.current = null;
+        }
+        // Revert to original content (before editing started)
+        setEditContent(originalContent);
+        setIsEditing(false);
+        data.onEditingChange(false);
       }
-      // Revert to original content (before editing started)
-      setEditContent(originalContent);
-      setIsEditing(false);
-      data.onEditingChange(false);
-    }
-  }, [handleBlur, data, originalContent]);
+    },
+    [handleBlur, data, originalContent],
+  );
 
-  const handleDelete = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!isRoot && !isReadOnly) {
-      data.onDelete(data.id);
-    }
-  }, [data, isRoot, isReadOnly]);
+  const handleDelete = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!isRoot && !isReadOnly) {
+        data.onDelete(data.id);
+      }
+    },
+    [data, isRoot, isReadOnly],
+  );
 
-  const handleAddChild = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!isReadOnly) {
-      data.onAddChild(data.id);
-    }
-  }, [data, isReadOnly]);
+  const handleAddChild = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!isReadOnly) {
+        data.onAddChild(data.id);
+      }
+    },
+    [data, isReadOnly],
+  );
 
   // Handle click on label area - only selects the node
-  const handleLabelClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    data.onSelect(data.id);
-  }, [data]);
+  const handleLabelClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      data.onSelect(data.id);
+    },
+    [data],
+  );
 
   // Handle click on content area - enters edit mode (if not read-only)
-  const handleContentClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    data.onSelect(data.id);
-    if (!isReadOnly && !isEditing) {
-      setOriginalContent(data.content); // Store original before editing
-      setIsEditing(true);
-      data.onEditingChange(true);
-    }
-  }, [data, isReadOnly, isEditing]);
+  const handleContentClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      data.onSelect(data.id);
+      if (!isReadOnly && !isEditing) {
+        setOriginalContent(data.content); // Store original before editing
+        setIsEditing(true);
+        data.onEditingChange(true);
+      }
+    },
+    [data, isReadOnly, isEditing],
+  );
 
   // Get styling based on node type
   const getBackgroundColor = () => {
     switch (data.type) {
-      case 'outcome':
-        return 'bg-[#FFF9C4]';
-      case 'opportunity':
-        return 'bg-[#BBDEFB]';
-      case 'solution':
-        return 'bg-[#C8E6C9]';
-      case 'sub-opportunity':
-        return 'bg-[#E1BEE7]';
+      case "outcome":
+        return "bg-[#FFF9C4]";
+      case "opportunity":
+        return "bg-[#BBDEFB]";
+      case "solution":
+        return "bg-[#C8E6C9]";
+      case "sub-opportunity":
+        return "bg-[#E1BEE7]";
       default:
-        return 'bg-[#BBDEFB]';
+        return "bg-[#BBDEFB]";
     }
   };
 
   const getBorderColor = () => {
     if (selected || data.isSelected) {
-      return 'ring-2 ring-blue-500 ring-offset-2';
+      return "ring-2 ring-blue-500 ring-offset-2";
     }
-    return '';
+    return "";
   };
 
   return (
@@ -189,7 +207,7 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
         rounded-lg shadow-md
         transition-all duration-200
         hover:shadow-lg hover:-translate-y-0.5
-        ${isEditing ? 'ring-2 ring-blue-500' : ''}
+        ${isEditing ? "ring-2 ring-blue-500" : ""}
       `}
       style={{
         width: size.width,
@@ -260,7 +278,7 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
 
       {/* Content area - clicking enters edit mode */}
       <div
-        className={`flex-1 flex items-center justify-center px-3 pb-3 ${isReadOnly ? 'cursor-default' : 'cursor-text'}`}
+        className={`flex-1 flex items-center justify-center px-3 pb-3 ${isReadOnly ? "cursor-default" : "cursor-text"}`}
         onClick={handleContentClick}
       >
         {isEditing ? (
@@ -275,7 +293,7 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
               w-full h-full resize-none bg-transparent
               text-center text-sm leading-snug
               focus:outline-none
-              ${data.type === 'outcome' ? 'font-semibold text-base' : ''}
+              ${data.type === "outcome" ? "font-semibold text-base" : ""}
             `}
             placeholder="Enter text..."
           />
@@ -283,12 +301,13 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
           <p
             className={`
               text-center text-sm leading-snug break-words overflow-hidden
-              ${data.type === 'outcome' ? 'font-semibold text-base' : ''}
+              ${data.type === "outcome" ? "font-semibold text-base" : ""}
             `}
             style={{
-              display: '-webkit-box',
-              WebkitLineClamp: data.type === 'outcome' ? 5 : 4,
-              WebkitBoxOrient: 'vertical',
+              display: "-webkit-box",
+              WebkitLineClamp:
+                data.type === "outcome" ? 8 : data.type === "solution" ? 7 : 7,
+              WebkitBoxOrient: "vertical",
             }}
           >
             {data.content}
@@ -299,7 +318,6 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
   );
 });
 
-StickyNote.displayName = 'StickyNote';
+StickyNote.displayName = "StickyNote";
 
 export default StickyNote;
-

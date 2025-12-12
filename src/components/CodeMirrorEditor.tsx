@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate, gutter, GutterMarker, hoverTooltip, keymap, lineNumbers } from '@codemirror/view';
 import { EditorState, Extension, RangeSetBuilder, StateField, StateEffect } from '@codemirror/state';
 import { autocompletion, CompletionContext, CompletionResult } from '@codemirror/autocomplete';
@@ -729,7 +729,26 @@ interface CodeMirrorEditorProps {
   onLineClick?: (line: number) => void;
 }
 
-export default function CodeMirrorEditor({
+// Text change operation for transactions
+interface TextChange {
+  from: number;
+  to: number;
+  insert: string;
+}
+
+// Imperative handle interface for external text updates
+export interface CodeMirrorEditorHandle {
+  // Apply external text changes via transactions
+  applyTransaction: (changes: TextChange[], preserveCursor?: boolean) => void;
+  
+  // Get current cursor position
+  getCursorPosition: () => { line: number; column: number } | null;
+  
+  // Set cursor position
+  setCursorPosition: (line: number, column: number) => void;
+}
+
+const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProps>(function CodeMirrorEditor({
   value,
   diagnostics,
   selectedLine,
@@ -737,13 +756,89 @@ export default function CodeMirrorEditor({
   onChange,
   onCursorChange,
   onLineClick,
-}: CodeMirrorEditorProps) {
+}, ref) {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const [isClient, setIsClient] = useState(false);
 
-  // Suppress unused variable warnings for future implementation
-  void onLineClick; // Will be used in task 10 (cursor position tracking)
+  // Expose imperative handle for external text updates
+  useImperativeHandle(ref, () => ({
+    applyTransaction: (changes: TextChange[], preserveCursor = true) => {
+      if (!viewRef.current) return;
+      
+      const view = viewRef.current;
+      const currentPos = view.state.selection.main.head;
+      
+      // Calculate new cursor position if preserving cursor
+      let newSelection = undefined;
+      if (preserveCursor) {
+        let newPos = currentPos;
+        for (const change of changes) {
+          if (change.from <= currentPos) {
+            const lengthDiff = change.insert.length - (change.to - change.from);
+            if (change.to <= currentPos) {
+              // Change is before cursor, adjust position
+              newPos += lengthDiff;
+            } else {
+              // Change overlaps cursor, place cursor at end of insertion
+              newPos = change.from + change.insert.length;
+            }
+          }
+        }
+        
+        // Ensure position is within document bounds after changes
+        const newDocLength = view.state.doc.length + changes.reduce((acc, change) => 
+          acc + change.insert.length - (change.to - change.from), 0);
+        newPos = Math.max(0, Math.min(newPos, newDocLength));
+        
+        newSelection = { anchor: newPos };
+      }
+      
+      // Apply changes and cursor position in a single transaction
+      view.dispatch({
+        changes: changes,
+        selection: newSelection,
+        userEvent: 'external.update', // Mark as external update for undo grouping
+      });
+    },
+    
+    getCursorPosition: () => {
+      if (!viewRef.current) return null;
+      
+      const pos = viewRef.current.state.selection.main.head;
+      const line = viewRef.current.state.doc.lineAt(pos);
+      const column = pos - line.from;
+      
+      return { line: line.number, column };
+    },
+    
+    setCursorPosition: (line: number, column: number) => {
+      if (!viewRef.current) return;
+      
+      const view = viewRef.current;
+      const doc = view.state.doc;
+      
+      try {
+        // Validate line number
+        if (line < 1 || line > doc.lines) return;
+        
+        const docLine = doc.line(line);
+        
+        // Validate column (clamp to line length)
+        const clampedColumn = Math.max(0, Math.min(column, docLine.length));
+        const pos = docLine.from + clampedColumn;
+        
+        view.dispatch({
+          selection: { anchor: pos },
+          scrollIntoView: true,
+        });
+      } catch (e) {
+        console.warn('Failed to set cursor position:', { line, column }, e);
+      }
+    },
+  }), []);
+
+
 
   // Ensure we're on the client
   useEffect(() => {
@@ -773,13 +868,26 @@ export default function CodeMirrorEditor({
             onChange(newValue);
           }
           
-          // Track cursor position changes
+          // Track cursor position changes - emit on any selection change
           if (update.selectionSet && onCursorChange) {
             const pos = update.state.selection.main.head;
             const line = update.state.doc.lineAt(pos);
             const column = pos - line.from;
             onCursorChange({ line: line.number, column });
           }
+        }),
+        // Handle line clicks for selection sync
+        EditorView.domEventHandlers({
+          click: (event, view) => {
+            if (onLineClick) {
+              const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+              if (pos !== null) {
+                const line = view.state.doc.lineAt(pos);
+                onLineClick(line.number);
+              }
+            }
+            return false; // Don't prevent default click behavior
+          },
         }),
         EditorView.editable.of(!readOnly),
         EditorState.readOnly.of(readOnly),
@@ -857,4 +965,6 @@ export default function CodeMirrorEditor({
 
   // Client-side: render editor container
   return <div ref={editorRef} className="w-full h-full" />;
-}
+});
+
+export default CodeMirrorEditor;
