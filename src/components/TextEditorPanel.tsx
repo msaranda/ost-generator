@@ -18,7 +18,7 @@ interface TextEditorPanelProps {
 }
 
 const MIN_WIDTH = 300;
-const MAX_WIDTH = 600;
+const MAX_WIDTH = 1200; // Increased from 600 to allow larger editor width
 const DEFAULT_WIDTH = 400;
 
 

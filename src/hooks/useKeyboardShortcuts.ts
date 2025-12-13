@@ -64,6 +64,21 @@ export function useKeyboardShortcuts({
 }: KeyboardShortcutHandlers) {
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
+      // Check if the text editor is focused - if so, don't handle app shortcuts
+      const activeElement = document.activeElement;
+      const isTextEditorFocused = activeElement?.closest('[role="main"]') !== null && 
+                                   activeElement?.closest('aside[aria-label="Text editor panel"]') !== null;
+      
+      // Also check if CodeMirror editor has focus (it uses contenteditable)
+      const isCodeMirrorFocused = activeElement?.classList.contains('cm-content') || 
+                                   activeElement?.closest('.cm-editor') !== null ||
+                                   activeElement?.closest('.cm-scroller') !== null;
+      
+      if (isTextEditorFocused || isCodeMirrorFocused) {
+        // Let the editor handle all keyboard events
+        return;
+      }
+
       // Check for modifier keys
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const cmdOrCtrl = isMac ? event.metaKey : event.ctrlKey;

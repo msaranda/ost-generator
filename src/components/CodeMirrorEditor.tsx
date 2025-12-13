@@ -541,6 +541,31 @@ function lineNumbersTheme(): Extension {
 }
 
 /**
+ * Scrollbar theme extension
+ * Ensures vertical scrollbar is visible
+ */
+function scrollbarTheme(): Extension {
+  return EditorView.theme({
+    '.cm-scroller': {
+      overflowY: 'auto',
+    },
+    '.cm-scroller::-webkit-scrollbar': {
+      width: '12px',
+    },
+    '.cm-scroller::-webkit-scrollbar-track': {
+      backgroundColor: '#f1f1f1',
+    },
+    '.cm-scroller::-webkit-scrollbar-thumb': {
+      backgroundColor: '#c1c1c1',
+      borderRadius: '6px',
+    },
+    '.cm-scroller::-webkit-scrollbar-thumb:hover': {
+      backgroundColor: '#a8a8a8',
+    },
+  });
+}
+
+/**
  * Folding extension for OST indentation-based structure
  * Implements folding based on indentation levels:
  * - Fold icons appear for parent nodes (lines with child nodes)
@@ -685,9 +710,164 @@ function lineSelectionExtension(): Extension {
  * - Cmd/Ctrl+Shift+Z for redo (CodeMirror default)
  * - Cmd/Ctrl+A for select all (CodeMirror default)
  * - Cmd/Ctrl+F for find (CodeMirror search extension)
+ * - Alt/Option+Arrow for word navigation (macOS-style)
+ * - Shift+Alt/Option+Arrow for word selection
  * Ensures shortcuts don't interfere with app shortcuts
  */
 function keyboardShortcutsExtension(): Extension {
+  // Word navigation commands - move by word boundaries
+  const moveWordLeft = (view: EditorView) => {
+    const { state } = view;
+    const { selection } = state;
+    const pos = selection.main.head;
+    const line = state.doc.lineAt(pos);
+    const lineText = line.text;
+    const offset = pos - line.from;
+    
+    // Find word boundary to the left
+    if (offset === 0) return false;
+    
+    const beforeCursor = lineText.substring(0, offset);
+    // Find the start of the current word or previous word
+    // Match: word characters followed by optional whitespace at the end
+    const wordMatch = beforeCursor.match(/\S+\s*$/);
+    let newOffset = 0;
+    
+    if (wordMatch) {
+      // Move to start of current/previous word
+      newOffset = beforeCursor.length - wordMatch[0].length;
+    } else {
+      // No word found, move to start of line
+      newOffset = 0;
+    }
+    
+    if (newOffset < offset) {
+      view.dispatch({
+        selection: { anchor: line.from + newOffset },
+        scrollIntoView: true,
+      });
+      return true;
+    }
+    return false;
+  };
+
+  const moveWordRight = (view: EditorView) => {
+    const { state } = view;
+    const { selection } = state;
+    const pos = selection.main.head;
+    const line = state.doc.lineAt(pos);
+    const lineText = line.text;
+    const offset = pos - line.from;
+    
+    // Find word boundary to the right
+    let newOffset = offset;
+    if (newOffset < lineText.length) {
+      const afterCursor = lineText.substring(offset);
+      const wordMatch = afterCursor.match(/^\S+\s*/);
+      if (wordMatch) {
+        newOffset = offset + wordMatch[0].length;
+      } else {
+        // Skip whitespace to next word
+        const spaceMatch = afterCursor.match(/^\s+/);
+        if (spaceMatch) {
+          const afterSpace = lineText.substring(offset + spaceMatch[0].length);
+          const nextWordMatch = afterSpace.match(/^\S+\s*/);
+          if (nextWordMatch) {
+            newOffset = offset + spaceMatch[0].length + nextWordMatch[0].length;
+          } else {
+            newOffset = line.length;
+          }
+        } else {
+          newOffset = line.length;
+        }
+      }
+    }
+    
+    if (newOffset > offset) {
+      view.dispatch({
+        selection: { anchor: line.from + newOffset },
+        scrollIntoView: true,
+      });
+      return true;
+    }
+    return false;
+  };
+
+  const selectWordLeft = (view: EditorView) => {
+    const { state } = view;
+    const { selection } = state;
+    const anchor = selection.main.anchor;
+    const head = selection.main.head;
+    const pos = head;
+    const line = state.doc.lineAt(pos);
+    const lineText = line.text;
+    const offset = pos - line.from;
+    
+    // Find word boundary to the left
+    let newOffset = offset;
+    if (newOffset > 0) {
+      const beforeCursor = lineText.substring(0, offset);
+      const wordMatch = beforeCursor.match(/\S+\s*$/);
+      if (wordMatch) {
+        newOffset = beforeCursor.length - wordMatch[0].length;
+      } else {
+        newOffset = 0;
+      }
+    }
+    
+    if (newOffset < offset) {
+      view.dispatch({
+        selection: { anchor, head: line.from + newOffset },
+        scrollIntoView: true,
+      });
+      return true;
+    }
+    return false;
+  };
+
+  const selectWordRight = (view: EditorView) => {
+    const { state } = view;
+    const { selection } = state;
+    const anchor = selection.main.anchor;
+    const head = selection.main.head;
+    const pos = head;
+    const line = state.doc.lineAt(pos);
+    const lineText = line.text;
+    const offset = pos - line.from;
+    
+    // Find word boundary to the right
+    let newOffset = offset;
+    if (newOffset < lineText.length) {
+      const afterCursor = lineText.substring(offset);
+      const wordMatch = afterCursor.match(/^\S+\s*/);
+      if (wordMatch) {
+        newOffset = offset + wordMatch[0].length;
+      } else {
+        const spaceMatch = afterCursor.match(/^\s+/);
+        if (spaceMatch) {
+          const afterSpace = lineText.substring(offset + spaceMatch[0].length);
+          const nextWordMatch = afterSpace.match(/^\S+\s*/);
+          if (nextWordMatch) {
+            newOffset = offset + spaceMatch[0].length + nextWordMatch[0].length;
+          } else {
+            newOffset = line.length;
+          }
+        } else {
+          newOffset = line.length;
+        }
+      }
+    }
+    
+    if (newOffset > offset) {
+      view.dispatch({
+        selection: { anchor, head: line.from + newOffset },
+        scrollIntoView: true,
+      });
+      return true;
+    }
+    return false;
+  };
+
   return [
     // History support (enables undo/redo)
     history(),
@@ -700,6 +880,14 @@ function keyboardShortcutsExtension(): Extension {
     
     // Search keymap includes Cmd/Ctrl+F for find
     keymap.of(searchKeymap),
+    
+    // Word navigation keymaps (macOS-style: Alt/Option+Arrow)
+    keymap.of([
+      { key: 'Alt-ArrowLeft', run: moveWordLeft },
+      { key: 'Alt-ArrowRight', run: moveWordRight },
+      { key: 'Shift-Alt-ArrowLeft', run: selectWordLeft },
+      { key: 'Shift-Alt-ArrowRight', run: selectWordRight },
+    ]),
     
     // Highlight selection matches when searching
     highlightSelectionMatches(),
@@ -853,8 +1041,10 @@ const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProp
     const startState = EditorState.create({
       doc: value,
       extensions: [
+        EditorView.lineWrapping, // Enable word wrap at window edge
         lineNumbers(),
         lineNumbersTheme(),
+        scrollbarTheme(), // Ensure visible scrollbar
         foldingExtension(),
         syntaxHighlightingExtension(),
         diagnosticsExtension(),
