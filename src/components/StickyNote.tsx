@@ -30,6 +30,7 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
   const isRoot = data.parentId === null;
   const isReadOnly = data.isReadOnly ?? false;
   const hasDescription = !!data.description;
+  const hasMetadata = !!data.metadata && Object.keys(data.metadata).length > 0;
 
   // Cleanup save timeout on unmount
   useEffect(() => {
@@ -260,7 +261,7 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
         onClick={handleLabelClick}
       >
         <span>{getNodeTypeLabel(data.type as NodeType)}</span>
-        {hasDescription && (
+        {(hasDescription || hasMetadata) && (
           <div
             className="relative"
             onMouseEnter={() => setShowDescriptionTooltip(true)}
@@ -269,7 +270,27 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
             <FileText size={12} className="text-gray-400" />
             {showDescriptionTooltip && (
               <div className="absolute left-0 top-full mt-1 z-50 w-64 p-2 bg-gray-800 text-white text-xs rounded shadow-lg whitespace-pre-wrap">
-                {data.description}
+                {hasDescription && (
+                  <div className="mb-2">
+                    <div className="font-semibold mb-1">Description:</div>
+                    <div>{data.description}</div>
+                  </div>
+                )}
+                {hasMetadata && data.metadata && (
+                  <div>
+                    <div className="font-semibold mb-1">Metadata:</div>
+                    {Object.entries(data.metadata).map(([fieldName, values]) => (
+                      <div key={fieldName} className="mb-1">
+                        <span className="font-semibold">{fieldName}:</span>
+                        <ul className="list-disc list-inside ml-2">
+                          {values.map((value, idx) => (
+                            <li key={idx}>{value}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -278,7 +299,7 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
 
       {/* Content area - clicking enters edit mode */}
       <div
-        className={`flex-1 flex items-center justify-center px-3 pb-3 ${isReadOnly ? "cursor-default" : "cursor-text"}`}
+        className={`flex-1 flex flex-col px-3 pb-3 ${isReadOnly ? "cursor-default" : "cursor-text"}`}
         onClick={handleContentClick}
       >
         {isEditing ? (
@@ -298,20 +319,39 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
             placeholder="Enter text..."
           />
         ) : (
-          <p
-            className={`
-              text-center text-sm leading-snug break-words overflow-hidden
-              ${data.type === "outcome" ? "font-semibold text-base" : ""}
-            `}
-            style={{
-              display: "-webkit-box",
-              WebkitLineClamp:
-                data.type === "outcome" ? 8 : data.type === "solution" ? 7 : 7,
-              WebkitBoxOrient: "vertical",
-            }}
-          >
-            {data.content}
-          </p>
+          <>
+            {/* Main content */}
+            <p
+              className={`
+                text-center text-sm leading-snug break-words overflow-hidden mb-1
+                ${data.type === "outcome" ? "font-semibold text-base" : ""}
+              `}
+              style={{
+                display: "-webkit-box",
+                WebkitLineClamp: hasMetadata || hasDescription ? 3 : (data.type === "outcome" ? 8 : 7),
+                WebkitBoxOrient: "vertical",
+              }}
+            >
+              {data.content}
+            </p>
+            
+            {/* Metadata fields */}
+            {hasMetadata && data.metadata && (
+              <div className="mt-1 space-y-0.5 border-t border-gray-300/50 pt-1">
+                {Object.entries(data.metadata).map(([fieldName, values]) => (
+                  <div key={fieldName} className="text-[10px] leading-tight">
+                    <span className="font-semibold text-gray-600">{fieldName}:</span>
+                    {values.map((value, idx) => (
+                      <span key={idx} className="text-gray-700 ml-1">
+                        {value}
+                        {idx < values.length - 1 && '; '}
+                      </span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

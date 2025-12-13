@@ -40,6 +40,7 @@ describe('Property 17: Parser remains pure', () => {
               expect(node1.type).toBe(node2.type);
               expect(node1.content).toBe(node2.content);
               expect(node1.description).toBe(node2.description);
+              expect(node1.metadata).toEqual(node2.metadata);
               expect(node1.children.length).toBe(node2.children.length);
             }
           }
@@ -99,5 +100,72 @@ describe('Property 17: Parser remains pure', () => {
       ),
       { numRuns: 100 }
     );
+  });
+
+  it('should parse metadata fields correctly', () => {
+    const text = `O: Reduce customer churn
+  OP: Users struggle with feature discovery
+    Evidence: 65% of churned users never used key features
+    Supporting Data: Average feature adoption: 23%
+    Problem: Users can't find features
+    S: Guided onboarding flow`;
+
+    const result = parseText(text);
+    
+    expect(result.success).toBe(true);
+    if (result.tree) {
+      const nodes = Object.values(result.tree.nodes);
+      const opportunityNode = nodes.find(n => n.type === 'opportunity');
+      
+      expect(opportunityNode).toBeDefined();
+      expect(opportunityNode?.metadata).toBeDefined();
+      expect(opportunityNode?.metadata?.['Evidence']).toEqual(['65% of churned users never used key features']);
+      expect(opportunityNode?.metadata?.['Supporting Data']).toEqual(['Average feature adoption: 23%']);
+      expect(opportunityNode?.metadata?.['Problem']).toEqual(['Users can\'t find features']);
+    }
+  });
+
+  it('should handle multiple instances of the same metadata type', () => {
+    const text = `O: Test outcome
+  OP: Test opportunity
+    Evidence: First evidence
+    Evidence: Second evidence
+    Evidence: Third evidence`;
+
+    const result = parseText(text);
+    
+    expect(result.success).toBe(true);
+    if (result.tree) {
+      const nodes = Object.values(result.tree.nodes);
+      const opportunityNode = nodes.find(n => n.type === 'opportunity');
+      
+      expect(opportunityNode).toBeDefined();
+      expect(opportunityNode?.metadata?.['Evidence']).toEqual([
+        'First evidence',
+        'Second evidence',
+        'Third evidence'
+      ]);
+    }
+  });
+
+  it('should distinguish between metadata and quoted descriptions', () => {
+    const text = `O: Test outcome
+  OP: Test opportunity
+    Evidence: This is evidence
+    "This is a quoted description"
+    Problem: This is a problem`;
+
+    const result = parseText(text);
+    
+    expect(result.success).toBe(true);
+    if (result.tree) {
+      const nodes = Object.values(result.tree.nodes);
+      const opportunityNode = nodes.find(n => n.type === 'opportunity');
+      
+      expect(opportunityNode).toBeDefined();
+      expect(opportunityNode?.metadata?.['Evidence']).toEqual(['This is evidence']);
+      expect(opportunityNode?.metadata?.['Problem']).toEqual(['This is a problem']);
+      expect(opportunityNode?.description).toBe('This is a quoted description');
+    }
   });
 });

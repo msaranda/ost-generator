@@ -60,6 +60,28 @@ function serializeNode(
   nodeLineMap[node.id] = lineNumber;
   lines.push(line);
 
+  const metadataIndent = getIndentation(depth + 1);
+
+  // Serialize metadata fields if present (order: Evidence, Problem, Supporting Data, Impact, Effort)
+  if (node.metadata && (options.preserveDescriptions ?? true)) {
+    const metadataOrder = ['Evidence', 'Problem', 'Supporting Data', 'Impact', 'Effort'];
+    for (const fieldName of metadataOrder) {
+      if (node.metadata[fieldName] && node.metadata[fieldName].length > 0) {
+        for (const value of node.metadata[fieldName]) {
+          lines.push(`${metadataIndent}${fieldName}: ${value}`);
+        }
+      }
+    }
+    // Also serialize any metadata fields not in the standard order
+    for (const [fieldName, values] of Object.entries(node.metadata)) {
+      if (!metadataOrder.includes(fieldName)) {
+        for (const value of values) {
+          lines.push(`${metadataIndent}${fieldName}: ${value}`);
+        }
+      }
+    }
+  }
+
   // Serialize description if present and preserveDescriptions is enabled
   if (node.description && (options.preserveDescriptions ?? true)) {
     const descriptionLines = node.description.split('\n');

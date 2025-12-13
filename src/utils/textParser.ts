@@ -45,6 +45,23 @@ const VALID_CHILDREN: Record<NodeType, NodeType[]> = {
   'sub-opportunity': ['solution'],
 };
 
+// Metadata field prefixes
+const METADATA_PREFIXES = ['Evidence:', 'Problem:', 'Supporting Data:', 'Impact:', 'Effort:'];
+
+/**
+ * Check if a line is a metadata field
+ */
+function isMetadataField(line: string): { isMetadata: boolean; fieldName: string | null; value: string } {
+  const trimmed = line.trim();
+  for (const prefix of METADATA_PREFIXES) {
+    if (trimmed.startsWith(prefix)) {
+      const value = trimmed.substring(prefix.length).trim();
+      return { isMetadata: true, fieldName: prefix.replace(':', ''), value };
+    }
+  }
+  return { isMetadata: false, fieldName: null, value: '' };
+}
+
 /**
  * Calculate indentation level from leading spaces
  */
@@ -194,10 +211,25 @@ export function parseText(text: string): ParseResult {
     const indentLevel = getIndentLevel(line);
     const { prefix, content, nodeType } = parseLine(line);
 
-    // Check if this is a description or continuation line for the last node
-    if (lastNode !== null && lastNodeIndent >= 0) {
+    // Check if this is a metadata field, description, or continuation line for the last node
+    if (lastNode !== null && lastNodeIndent >= 0 && indentLevel > lastNodeIndent) {
+      // Check for metadata field first
+      const metadataCheck = isMetadataField(line);
+      if (metadataCheck.isMetadata && metadataCheck.fieldName) {
+        // Initialize metadata object if it doesn't exist
+        if (!lastNode.metadata) {
+          lastNode.metadata = {};
+        }
+        // Add metadata value (support multiple instances of same type)
+        if (!lastNode.metadata[metadataCheck.fieldName]) {
+          lastNode.metadata[metadataCheck.fieldName] = [];
+        }
+        lastNode.metadata[metadataCheck.fieldName].push(metadataCheck.value);
+        continue;
+      }
+      
       // Check for quoted description
-      if (isQuotedDescription(line) && indentLevel > lastNodeIndent) {
+      if (isQuotedDescription(line)) {
         const description = extractQuotedDescription(line);
         if (lastNode.description) {
           lastNode.description += '\n' + description;
@@ -207,7 +239,7 @@ export function parseText(text: string): ParseResult {
         continue;
       }
       
-      // Check for continuation line
+      // Check for continuation line (non-metadata, non-quoted content)
       if (isContinuationLine(line, lastNodeIndent)) {
         const continuationText = line.trim();
         if (lastNode.description) {
@@ -256,6 +288,7 @@ export function parseText(text: string): ParseResult {
       children: [],
       position: { x: 0, y: 0 },
       color: getNodeColor(nodeType),
+      metadata: undefined, // Will be populated if metadata fields are found
     };
 
     // Handle root node (indentation 0)

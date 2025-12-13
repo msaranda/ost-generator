@@ -17,7 +17,9 @@ describe('Property 18: Serializer remains pure', () => {
     type: NodeType,
     content: string,
     parentId: string | null = null,
-    children: string[] = []
+    children: string[] = [],
+    metadata?: Record<string, string[]>,
+    description?: string
   ): OSTNode {
     return {
       id: uuidv4(),
@@ -27,6 +29,8 @@ describe('Property 18: Serializer remains pure', () => {
       children,
       position: { x: 0, y: 0 },
       color: '#FFFFFF',
+      metadata,
+      description,
     };
   }
 
@@ -139,5 +143,85 @@ describe('Property 18: Serializer remains pure', () => {
       ),
       { numRuns: 100 }
     );
+  });
+
+  it('should serialize metadata fields correctly', () => {
+    const rootNode = createNode('outcome', 'Test outcome');
+    const oppNode = createNode('opportunity', 'Test opportunity', rootNode.id, [], {
+      'Evidence': ['65% of churned users never used key features'],
+      'Supporting Data': ['Average feature adoption: 23%'],
+      'Problem': ['Users can\'t find features'],
+    });
+    
+    rootNode.children.push(oppNode.id);
+    
+    const tree: TreeState = {
+      rootId: rootNode.id,
+      nodes: { [rootNode.id]: rootNode, [oppNode.id]: oppNode },
+      selectedNodeId: null,
+    };
+
+    const result = serializeTree(tree);
+    
+    expect(result.text).toContain('Evidence: 65% of churned users never used key features');
+    expect(result.text).toContain('Supporting Data: Average feature adoption: 23%');
+    expect(result.text).toContain('Problem: Users can\'t find features');
+  });
+
+  it('should serialize multiple instances of the same metadata type', () => {
+    const rootNode = createNode('outcome', 'Test outcome');
+    const oppNode = createNode('opportunity', 'Test opportunity', rootNode.id, [], {
+      'Evidence': ['First evidence', 'Second evidence', 'Third evidence'],
+    });
+    
+    rootNode.children.push(oppNode.id);
+    
+    const tree: TreeState = {
+      rootId: rootNode.id,
+      nodes: { [rootNode.id]: rootNode, [oppNode.id]: oppNode },
+      selectedNodeId: null,
+    };
+
+    const result = serializeTree(tree);
+    
+    const evidenceLines = result.text.split('\n').filter(line => line.includes('Evidence:'));
+    expect(evidenceLines).toHaveLength(3);
+    expect(evidenceLines[0]).toContain('First evidence');
+    expect(evidenceLines[1]).toContain('Second evidence');
+    expect(evidenceLines[2]).toContain('Third evidence');
+  });
+
+  it('should maintain correct order: content → metadata → description → children', () => {
+    const rootNode = createNode('outcome', 'Test outcome');
+    const oppNode = createNode(
+      'opportunity',
+      'Test opportunity',
+      rootNode.id,
+      [],
+      { 'Evidence': ['Some evidence'] },
+      'Quoted description'
+    );
+    const solNode = createNode('solution', 'Test solution', oppNode.id);
+    
+    rootNode.children.push(oppNode.id);
+    oppNode.children.push(solNode.id);
+    
+    const tree: TreeState = {
+      rootId: rootNode.id,
+      nodes: { [rootNode.id]: rootNode, [oppNode.id]: oppNode, [solNode.id]: solNode },
+      selectedNodeId: null,
+    };
+
+    const result = serializeTree(tree);
+    const lines = result.text.split('\n');
+    
+    const oppIndex = lines.findIndex(line => line.includes('OP: Test opportunity'));
+    const evidenceIndex = lines.findIndex(line => line.includes('Evidence:'));
+    const descriptionIndex = lines.findIndex(line => line.includes('Quoted description'));
+    const solutionIndex = lines.findIndex(line => line.includes('S: Test solution'));
+    
+    expect(oppIndex).toBeLessThan(evidenceIndex);
+    expect(evidenceIndex).toBeLessThan(descriptionIndex);
+    expect(descriptionIndex).toBeLessThan(solutionIndex);
   });
 });

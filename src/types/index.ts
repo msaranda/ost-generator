@@ -10,7 +10,8 @@ export interface OSTNode {
   id: string;
   type: NodeType;
   content: string;
-  description?: string; // Optional multi-line description
+  description?: string; // Optional multi-line description (quoted descriptions and non-metadata continuation lines)
+  metadata?: Record<string, string[]>; // Structured metadata fields (Evidence, Problem, Supporting Data, Impact, Effort)
   parentId: string | null;
   children: string[];
   position: { x: number; y: number };
