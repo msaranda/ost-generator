@@ -16,6 +16,8 @@ import { ValidationError } from '../utils/textParser';
  * - OP:, OPP: → blue (#1976D2)
  * - S:, SOL: → green (#388E3C)
  * - SU:, SUB: → purple (#7B1FA2)
+ * Also highlights metadata fields:
+ * - Evidence:, Problem:, Supporting Data:, Impact:, Effort: → teal (#00897B)
  */
 function syntaxHighlightingExtension(): Extension {
   // Define decoration marks for each node type
@@ -23,6 +25,7 @@ function syntaxHighlightingExtension(): Extension {
   const opportunityMark = Decoration.mark({ class: 'cm-ost-opportunity' });
   const solutionMark = Decoration.mark({ class: 'cm-ost-solution' });
   const subOpportunityMark = Decoration.mark({ class: 'cm-ost-sub-opportunity' });
+  const metadataMark = Decoration.mark({ class: 'cm-ost-metadata' });
 
   // Regex patterns for each prefix type
   const patterns = [
@@ -30,6 +33,15 @@ function syntaxHighlightingExtension(): Extension {
     { regex: /^(\s*)(OPP:|OP:)/g, mark: opportunityMark },
     { regex: /^(\s*)(SOL:|S:)/g, mark: solutionMark },
     { regex: /^(\s*)(SUB:|SU:)/g, mark: subOpportunityMark },
+  ];
+
+  // Metadata field patterns
+  const metadataPatterns = [
+    { regex: /^(\s*)(Evidence:)/g, mark: metadataMark },
+    { regex: /^(\s*)(Problem:)/g, mark: metadataMark },
+    { regex: /^(\s*)(Supporting Data:)/g, mark: metadataMark },
+    { regex: /^(\s*)(Impact:)/g, mark: metadataMark },
+    { regex: /^(\s*)(Effort:)/g, mark: metadataMark },
   ];
 
   const viewPlugin = ViewPlugin.fromClass(
@@ -53,8 +65,9 @@ function syntaxHighlightingExtension(): Extension {
         for (let lineNum = 1; lineNum <= doc.lines; lineNum++) {
           const line = doc.line(lineNum);
           const lineText = line.text;
+          let matched = false;
 
-          // Check each pattern
+          // Check each node prefix pattern first
           for (const { regex, mark } of patterns) {
             // Reset regex state
             regex.lastIndex = 0;
@@ -65,7 +78,25 @@ function syntaxHighlightingExtension(): Extension {
               const prefixStart = line.from + match[1].length;
               const prefixEnd = prefixStart + match[2].length;
               builder.add(prefixStart, prefixEnd, mark);
+              matched = true;
               break; // Only match one prefix per line
+            }
+          }
+
+          // If no node prefix matched, check for metadata fields
+          if (!matched) {
+            for (const { regex, mark } of metadataPatterns) {
+              // Reset regex state
+              regex.lastIndex = 0;
+              const match = regex.exec(lineText);
+
+              if (match) {
+                // match[1] is the whitespace, match[2] is the metadata field name
+                const prefixStart = line.from + match[1].length;
+                const prefixEnd = prefixStart + match[2].length;
+                builder.add(prefixStart, prefixEnd, mark);
+                break; // Only match one metadata field per line
+              }
             }
           }
         }
@@ -95,6 +126,11 @@ function syntaxHighlightingExtension(): Extension {
     '.cm-ost-sub-opportunity': {
       color: '#7B1FA2',
       fontWeight: 'bold',
+    },
+    '.cm-ost-metadata': {
+      color: '#00897B',
+      fontWeight: 'bold',
+      fontStyle: 'italic',
     },
   });
 
@@ -624,6 +660,9 @@ function foldingExtension(): Extension {
 // State effect for updating selected line
 const setSelectedLineEffect = StateEffect.define<number | null>();
 
+// State effect for updating selected line range
+const setSelectedLineRangeEffect = StateEffect.define<{ start: number; end: number } | null>();
+
 // State field to store current selected line
 const selectedLineState = StateField.define<number | null>({
   create: () => null,
@@ -634,6 +673,19 @@ const selectedLineState = StateField.define<number | null>({
       }
     }
     return selectedLine;
+  },
+});
+
+// State field to store current selected line range
+const selectedLineRangeState = StateField.define<{ start: number; end: number } | null>({
+  create: () => null,
+  update(selectedLineRange, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setSelectedLineRangeEffect)) {
+        return effect.value;
+      }
+    }
+    return selectedLineRange;
   },
 });
 
@@ -648,13 +700,19 @@ function lineSelectionExtension(): Extension {
       }
 
       update(update: ViewUpdate) {
-        if (update.state.field(selectedLineState) !== update.startState.field(selectedLineState)) {
+        const lineChanged = update.state.field(selectedLineState) !== update.startState.field(selectedLineState);
+        const rangeChanged = update.state.field(selectedLineRangeState) !== update.startState.field(selectedLineRangeState);
+        
+        if (lineChanged || rangeChanged) {
           this.decorations = this.buildDecorations(update.view);
           
-          // Scroll to selected line when it changes (defer to avoid update conflicts)
+          // Scroll to selected line/range when it changes (defer to avoid update conflicts)
+          const selectedLineRange = update.state.field(selectedLineRangeState);
           const selectedLine = update.state.field(selectedLineState);
-          if (selectedLine !== null) {
-            // Use setTimeout to defer scrolling until after the current update cycle
+          
+          if (selectedLineRange !== null) {
+            setTimeout(() => this.scrollToLine(update.view, selectedLineRange.start), 0);
+          } else if (selectedLine !== null) {
             setTimeout(() => this.scrollToLine(update.view, selectedLine), 0);
           }
         }
@@ -662,10 +720,52 @@ function lineSelectionExtension(): Extension {
 
       buildDecorations(view: EditorView): DecorationSet {
         const builder = new RangeSetBuilder<Decoration>();
+        const selectedLineRange = view.state.field(selectedLineRangeState);
         const selectedLine = view.state.field(selectedLineState);
         const doc = view.state.doc;
 
-        if (selectedLine !== null && selectedLine >= 1 && selectedLine <= doc.lines) {
+        // Prioritize range over single line
+        if (selectedLineRange !== null) {
+          const { start, end } = selectedLineRange;
+          if (start >= 1 && end >= start && end <= doc.lines) {
+            try {
+              // Add padding before the block (only if there's a previous line)
+              if (start > 1) {
+                const prevLine = doc.line(start - 1);
+                // Only add padding if previous line is not empty (to avoid double padding)
+                if (prevLine.text.trim() !== '') {
+                  const paddingMark = Decoration.line({
+                    class: 'cm-selected-block-padding',
+                  });
+                  builder.add(prevLine.from, prevLine.from, paddingMark);
+                }
+              }
+
+              // Highlight all lines in the range
+              for (let lineNum = start; lineNum <= end; lineNum++) {
+                const line = doc.line(lineNum);
+                const lineMark = Decoration.line({
+                  class: 'cm-selected-line',
+                });
+                builder.add(line.from, line.from, lineMark);
+              }
+
+              // Add padding after the block (only if there's a next line)
+              if (end < doc.lines) {
+                const nextLine = doc.line(end + 1);
+                // Only add padding if next line is not empty (to avoid double padding)
+                if (nextLine.text.trim() !== '') {
+                  const paddingMark = Decoration.line({
+                    class: 'cm-selected-block-padding',
+                  });
+                  builder.add(nextLine.from, nextLine.from, paddingMark);
+                }
+              }
+            } catch (e) {
+              console.warn('Invalid selected line range:', selectedLineRange, e);
+            }
+          }
+        } else if (selectedLine !== null && selectedLine >= 1 && selectedLine <= doc.lines) {
           try {
             const line = doc.line(selectedLine);
             const lineMark = Decoration.line({
@@ -699,14 +799,18 @@ function lineSelectionExtension(): Extension {
     }
   );
 
-  // Theme for selected line
+  // Theme for selected line and block
   const theme = EditorView.theme({
     '.cm-selected-line': {
       backgroundColor: '#E3F2FD !important',
     },
+    '.cm-selected-block-padding': {
+      backgroundColor: 'transparent',
+      minHeight: '0.75em',
+    },
   });
 
-  return [selectedLineState, highlightPlugin, theme];
+  return [selectedLineState, selectedLineRangeState, highlightPlugin, theme];
 }
 
 /**
@@ -907,8 +1011,11 @@ interface CodeMirrorEditorProps {
   // Input: validation errors from parser
   diagnostics: ValidationError[];
   
-  // Input: selected line for highlighting
+  // Input: selected line for highlighting (single line - for backward compatibility)
   selectedLine: number | null;
+  
+  // Input: selected line range for highlighting full node content
+  selectedLineRange?: { start: number; end: number } | null;
   
   // Input: configuration
   readOnly?: boolean;
@@ -946,6 +1053,7 @@ const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProp
   value,
   diagnostics,
   selectedLine,
+  selectedLineRange,
   readOnly = false,
   onChange,
   onCursorChange,
@@ -1075,11 +1183,24 @@ const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProp
         // Handle line clicks for selection sync
         EditorView.domEventHandlers({
           click: (event, view) => {
-            if (onLineClick) {
+            if (onLineClick && event.target) {
+              // Only handle clicks on the editor content, not on line numbers or other UI elements
+              const target = event.target as HTMLElement;
+              if (target.closest('.cm-lineNumbers') || target.closest('.cm-foldGutter') || target.closest('.cm-diagnostic-gutter')) {
+                return false; // Ignore clicks on gutters
+              }
+              
               const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
               if (pos !== null) {
-                const line = view.state.doc.lineAt(pos);
-                onLineClick(line.number);
+                try {
+                  const line = view.state.doc.lineAt(pos);
+                  // Use setTimeout to avoid interfering with text selection
+                  setTimeout(() => {
+                    onLineClick(line.number);
+                  }, 0);
+                } catch (e) {
+                  // Ignore errors if position is invalid
+                }
               }
             }
             return false; // Don't prevent default click behavior
@@ -1132,14 +1253,17 @@ const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProp
     });
   }, [diagnostics, isClient]);
 
-  // Update selected line when it changes
+  // Update selected line and range when they change
   useEffect(() => {
     if (!viewRef.current || !isClient) return;
     
     viewRef.current.dispatch({
-      effects: setSelectedLineEffect.of(selectedLine),
+      effects: [
+        setSelectedLineEffect.of(selectedLine),
+        setSelectedLineRangeEffect.of(selectedLineRange || null),
+      ],
     });
-  }, [selectedLine, isClient]);
+  }, [selectedLine, selectedLineRange, isClient]);
 
   // Note: We don't need a separate effect for read-only mode changes
   // because we're using EditorView.editable.of() and EditorState.readOnly.of()

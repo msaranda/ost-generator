@@ -11,6 +11,7 @@ import ReactFlow, {
   ReactFlowProvider,
   MarkerType,
   NodeDragHandler,
+  NodeMouseHandler,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -59,6 +60,7 @@ interface OSTCanvasProps {
   onMoveNode: (id: string, position: { x: number; y: number }) => void;
   onEditingChange: (isEditing: boolean) => void;
   onTextSaved?: () => void;
+  onShowDetails?: (id: string) => void;
   zoom: number;
   onZoomChange: (zoom: number) => void;
   layoutMode: 'auto' | 'manual';
@@ -74,6 +76,7 @@ export interface OSTCanvasHandle {
   getCanvasElement: () => HTMLElement | null;
   getNearestNodeToCursor: () => string | null;
   panToNode: (nodeId: string) => void;
+  zoomToNode: (nodeId: string) => void;
 }
 
 // Custom node types
@@ -99,6 +102,7 @@ const OSTCanvasInner = forwardRef<OSTCanvasHandle, OSTCanvasProps>(
       onMoveNode,
       onEditingChange,
       onTextSaved,
+      onShowDetails,
       zoom: _zoom,
       onZoomChange,
       layoutMode,
@@ -153,6 +157,31 @@ const OSTCanvasInner = forwardRef<OSTCanvasHandle, OSTCanvasProps>(
           );
         }
       },
+      zoomToNode: (nodeId: string) => {
+        const node = tree.nodes[nodeId];
+        if (node && containerRef.current) {
+          const size = NODE_SIZES[node.type as NodeType] || NODE_SIZES.opportunity;
+          const containerBounds = containerRef.current.getBoundingClientRect();
+          
+          // Calculate appropriate zoom level to fit the node with padding
+          // We want the node to take up about 40-50% of the viewport
+          const padding = 100; // Padding around the node
+          const targetWidth = containerBounds.width * 0.4;
+          const targetHeight = containerBounds.height * 0.4;
+          
+          // Calculate zoom based on node size vs target size
+          const zoomX = targetWidth / (size.width + padding * 2);
+          const zoomY = targetHeight / (size.height + padding * 2);
+          const zoom = Math.min(zoomX, zoomY, 1.5); // Cap zoom at 1.5x
+          
+          // Center on the node with calculated zoom
+          reactFlowInstance.setCenter(
+            node.position.x + size.width / 2,
+            node.position.y + size.height / 2,
+            { duration: 300, zoom: Math.max(0.3, zoom) } // Minimum zoom of 0.3x
+          );
+        }
+      },
     }), [reactFlowInstance, mousePosition, tree.nodes]);
 
     // Convert tree nodes to ReactFlow nodes
@@ -171,6 +200,7 @@ const OSTCanvasInner = forwardRef<OSTCanvasHandle, OSTCanvasProps>(
             onSelect: onSelectNode,
             onEditingChange,
             onTextSaved,
+            onShowDetails,
             isSelected: tree.selectedNodeId === node.id,
             isReadOnly,
             shouldTriggerEdit: triggerEditNodeId === node.id,
@@ -183,7 +213,7 @@ const OSTCanvasInner = forwardRef<OSTCanvasHandle, OSTCanvasProps>(
           draggable: layoutMode === 'manual' && !isReadOnly, // Enable dragging in manual mode (not in read-only)
         };
       });
-    }, [tree.nodes, tree.selectedNodeId, onUpdateNode, onRequestDelete, onAddChild, onSelectNode, onEditingChange, onTextSaved, layoutMode, isReadOnly, triggerEditNodeId, onClearTriggerEdit]);
+    }, [tree.nodes, tree.selectedNodeId, onUpdateNode, onRequestDelete, onAddChild, onSelectNode, onEditingChange, onTextSaved, onShowDetails, layoutMode, isReadOnly, triggerEditNodeId, onClearTriggerEdit]);
 
     // Handle node drag end (for manual mode)
     const handleNodeDragStop: NodeDragHandler = useCallback(
@@ -234,6 +264,23 @@ const OSTCanvasInner = forwardRef<OSTCanvasHandle, OSTCanvasProps>(
       onSelectNode(null);
     }, [onSelectNode]);
 
+    // Handle double-click on node to show details
+    const handleNodeDoubleClick: NodeMouseHandler = useCallback(
+      (event, node) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const nodeData = tree.nodes[node.id];
+        if (nodeData) {
+          const hasDescription = !!nodeData.description;
+          const hasMetadata = !!nodeData.metadata && Object.keys(nodeData.metadata).length > 0;
+          if ((hasDescription || hasMetadata) && onShowDetails) {
+            onShowDetails(node.id);
+          }
+        }
+      },
+      [tree.nodes, onShowDetails]
+    );
+
     // Get node color for minimap
     const nodeColor = useCallback((node: Node) => {
       const nodeData = tree.nodes[node.id];
@@ -263,6 +310,8 @@ const OSTCanvasInner = forwardRef<OSTCanvasHandle, OSTCanvasProps>(
           onMoveEnd={handleMoveEnd}
           onPaneClick={handlePaneClick}
           onNodeDragStop={handleNodeDragStop}
+          onNodeDoubleClick={handleNodeDoubleClick}
+          zoomOnDoubleClick={false}
           nodesDraggable={layoutMode === 'manual'}
           nodesConnectable={false}
           elementsSelectable={true}

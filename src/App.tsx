@@ -14,6 +14,7 @@ import TextEditorPanel from './components/TextEditorPanel';
 import ImportModal from './components/ImportModal';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
 import SessionLimitModal from './components/SessionLimitModal';
+import NodeDetailsModal from './components/NodeDetailsModal';
 
 function App() {
   // Tree state management
@@ -49,6 +50,9 @@ function App() {
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+
+  const [showNodeDetailsModal, setShowNodeDetailsModal] = useState(false);
+  const [selectedNodeForDetails, setSelectedNodeForDetails] = useState<string | null>(null);
 
   // Refs
   const canvasRef = useRef<OSTCanvasHandle>(null);
@@ -292,8 +296,19 @@ function App() {
     setTriggerEditNodeId(null);
   }, []);
 
+  // Handle showing node details
+  const handleShowNodeDetails = useCallback((id: string) => {
+    setSelectedNodeForDetails(id);
+    setShowNodeDetailsModal(true);
+  }, []);
+
+  const handleCloseNodeDetails = useCallback(() => {
+    setShowNodeDetailsModal(false);
+    setSelectedNodeForDetails(null);
+  }, []);
+
   // Track if any modal is open
-  const hasOpenModal = showImportModal || showDeleteModal || !!pendingSessionToRemove;
+  const hasOpenModal = showImportModal || showDeleteModal || showNodeDetailsModal || !!pendingSessionToRemove;
 
   // Handle closing the active modal
   const handleCloseModal = useCallback(() => {
@@ -302,10 +317,12 @@ function App() {
     } else if (showDeleteModal) {
       setShowDeleteModal(false);
       setPendingDeleteId(null);
+    } else if (showNodeDetailsModal) {
+      handleCloseNodeDetails();
     } else if (pendingSessionToRemove) {
       dismissPendingRemoval();
     }
-  }, [showImportModal, showDeleteModal, pendingSessionToRemove, dismissPendingRemoval]);
+  }, [showImportModal, showDeleteModal, showNodeDetailsModal, pendingSessionToRemove, dismissPendingRemoval, handleCloseNodeDetails]);
 
   // Get nearest node to cursor for arrow key navigation
   const getNearestNodeToCursor = useCallback(() => {
@@ -328,6 +345,7 @@ function App() {
     onUndo: isReadOnly ? undefined : undo,
     onRedo: isReadOnly ? undefined : redo,
     onEnterEdit: handleEnterEditMode,
+    onShowDetails: handleShowNodeDetails,
     onSelectNode: selectNode,
     onCloseModal: handleCloseModal,
     hasOpenModal,
@@ -387,6 +405,7 @@ function App() {
               onMoveNode={isReadOnly ? () => {} : moveNode}
               onEditingChange={setIsEditing}
               onTextSaved={handleTextSaved}
+              onShowDetails={handleShowNodeDetails}
               zoom={zoom}
               onZoomChange={setZoom}
               layoutMode={layoutMode}
@@ -437,6 +456,12 @@ function App() {
         onDownloadAndRemove={confirmRemoval}
         onRemove={confirmRemoval}
         onCancel={dismissPendingRemoval}
+      />
+
+      <NodeDetailsModal
+        isOpen={showNodeDetailsModal}
+        onClose={handleCloseNodeDetails}
+        node={selectedNodeForDetails ? tree.nodes[selectedNodeForDetails] || null : null}
       />
     </div>
   );

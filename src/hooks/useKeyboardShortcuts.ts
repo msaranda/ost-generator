@@ -9,6 +9,7 @@ interface KeyboardShortcutHandlers {
   onUndo?: () => void;
   onRedo?: () => void;
   onEnterEdit?: () => void;
+  onShowDetails?: (nodeId: string) => void;
   onSelectNode?: (nodeId: string) => void;
   onCloseModal?: () => void;
   hasOpenModal: boolean;
@@ -54,6 +55,7 @@ export function useKeyboardShortcuts({
   onUndo,
   onRedo,
   onEnterEdit,
+  onShowDetails,
   onSelectNode,
   onCloseModal,
   hasOpenModal,
@@ -182,11 +184,20 @@ export function useKeyboardShortcuts({
           }
           break;
 
-        // Enter: Enter edit mode
+        // Enter: Show details if available, otherwise enter edit mode
         case 'enter':
           event.preventDefault();
-          if (onEnterEdit) {
-            onEnterEdit();
+          if (selectedNodeId) {
+            const node = tree.nodes[selectedNodeId];
+            const hasDescription = !!node?.description;
+            const hasMetadata = !!node?.metadata && Object.keys(node.metadata).length > 0;
+            
+            // If node has details, show them; otherwise enter edit mode
+            if ((hasDescription || hasMetadata) && onShowDetails) {
+              onShowDetails(selectedNodeId);
+            } else if (onEnterEdit) {
+              onEnterEdit();
+            }
           }
           break;
 
@@ -240,7 +251,7 @@ export function useKeyboardShortcuts({
           break;
       }
     },
-    [isEditing, selectedNodeId, tree, onAddChild, onDelete, onEscape, onSave, onUndo, onRedo, onEnterEdit, onSelectNode, onCloseModal, hasOpenModal, getNearestNodeToCursor]
+    [isEditing, selectedNodeId, tree, onAddChild, onDelete, onEscape, onSave, onUndo, onRedo, onEnterEdit, onShowDetails, onSelectNode, onCloseModal, hasOpenModal, getNearestNodeToCursor]
   );
 
   useEffect(() => {

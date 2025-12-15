@@ -1,6 +1,6 @@
 import { memo, useState, useRef, useEffect, useCallback } from "react";
 import { Handle, Position, NodeProps } from "reactflow";
-import { X, Plus, FileText } from "lucide-react";
+import { X, Plus } from "lucide-react";
 import { OSTNode, NODE_SIZES, NodeType } from "../types";
 import { getNodeTypeLabel } from "../utils/nodeTypes";
 
@@ -11,6 +11,7 @@ interface StickyNoteData extends OSTNode {
   onSelect: (id: string | null) => void;
   onEditingChange: (isEditing: boolean) => void;
   onTextSaved?: () => void;
+  onShowDetails?: (id: string) => void;
   isSelected: boolean;
   isReadOnly?: boolean;
   shouldTriggerEdit?: boolean;
@@ -22,7 +23,6 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
   const [editContent, setEditContent] = useState(data.content);
   const [originalContent, setOriginalContent] = useState(data.content);
   const [isHovered, setIsHovered] = useState(false);
-  const [showDescriptionTooltip, setShowDescriptionTooltip] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -162,18 +162,33 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
     [data],
   );
 
-  // Handle click on content area - enters edit mode (if not read-only)
+  // Handle click on content area - only selects the node (no editing on single click)
   const handleContentClick = useCallback(
     (e: React.MouseEvent) => {
-      e.stopPropagation();
+      // Always select the node - editing is only available via keyboard shortcut (Enter)
       data.onSelect(data.id);
-      if (!isReadOnly && !isEditing) {
-        setOriginalContent(data.content); // Store original before editing
-        setIsEditing(true);
-        data.onEditingChange(true);
-      }
+      e.stopPropagation();
     },
-    [data, isReadOnly, isEditing],
+    [data],
+  );
+
+  // Handle click anywhere on the node - selects the node
+  // This ensures clicking anywhere on the node (including empty areas) selects it
+  const handleNodeClick = useCallback(
+    (e: React.MouseEvent) => {
+      // Don't interfere if clicking on buttons or interactive elements
+      const target = e.target as HTMLElement;
+      if (
+        target.closest('button') ||
+        target.closest('textarea') ||
+        target.closest('.cm-editor') // Don't interfere with CodeMirror if embedded
+      ) {
+        return;
+      }
+      // Select the node - child handlers will stop propagation if they need to do something else
+      data.onSelect(data.id);
+    },
+    [data],
   );
 
   // Get styling based on node type
@@ -202,7 +217,7 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
   return (
     <div
       className={`
-        relative cursor-default flex flex-col
+        relative cursor-pointer flex flex-col
         ${getBackgroundColor()}
         ${getBorderColor()}
         rounded-lg shadow-md
@@ -218,6 +233,7 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onClick={handleNodeClick}
     >
       {/* Connection handles */}
       {!isRoot && (
@@ -257,44 +273,10 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
 
       {/* Node type label - clicking selects node only */}
       <div
-        className="px-3 pt-2 pb-1 text-[10px] font-medium text-gray-500 uppercase tracking-wider cursor-pointer flex items-center justify-between"
+        className="px-3 pt-2 pb-1 text-[10px] font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
         onClick={handleLabelClick}
       >
         <span>{getNodeTypeLabel(data.type as NodeType)}</span>
-        {(hasDescription || hasMetadata) && (
-          <div
-            className="relative"
-            onMouseEnter={() => setShowDescriptionTooltip(true)}
-            onMouseLeave={() => setShowDescriptionTooltip(false)}
-          >
-            <FileText size={12} className="text-gray-400" />
-            {showDescriptionTooltip && (
-              <div className="absolute left-0 top-full mt-1 z-50 w-64 p-2 bg-gray-800 text-white text-xs rounded shadow-lg whitespace-pre-wrap">
-                {hasDescription && (
-                  <div className="mb-2">
-                    <div className="font-semibold mb-1">Description:</div>
-                    <div>{data.description}</div>
-                  </div>
-                )}
-                {hasMetadata && data.metadata && (
-                  <div>
-                    <div className="font-semibold mb-1">Metadata:</div>
-                    {Object.entries(data.metadata).map(([fieldName, values]) => (
-                      <div key={fieldName} className="mb-1">
-                        <span className="font-semibold">{fieldName}:</span>
-                        <ul className="list-disc list-inside ml-2">
-                          {values.map((value, idx) => (
-                            <li key={idx}>{value}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Content area - clicking enters edit mode */}
@@ -320,40 +302,48 @@ const StickyNote = memo(({ data, selected }: NodeProps<StickyNoteData>) => {
           />
         ) : (
           <>
-            {/* Main content */}
+            {/* Title - larger and bold for readability at zoom out */}
             <p
               className={`
-                text-center text-sm leading-snug break-words overflow-hidden mb-1
-                ${data.type === "outcome" ? "font-semibold text-base" : ""}
+                text-center break-words overflow-hidden mb-2
+                ${data.type === "outcome" ? "font-bold text-lg" : "font-semibold text-base"}
               `}
               style={{
                 display: "-webkit-box",
-                WebkitLineClamp: hasMetadata || hasDescription ? 3 : (data.type === "outcome" ? 8 : 7),
+                WebkitLineClamp: hasDescription ? 3 : (data.type === "outcome" ? 6 : 5),
                 WebkitBoxOrient: "vertical",
               }}
             >
               {data.content}
             </p>
             
-            {/* Metadata fields */}
-            {hasMetadata && data.metadata && (
-              <div className="mt-1 space-y-0.5 border-t border-gray-300/50 pt-1">
-                {Object.entries(data.metadata).map(([fieldName, values]) => (
-                  <div key={fieldName} className="text-[10px] leading-tight">
-                    <span className="font-semibold text-gray-600">{fieldName}:</span>
-                    {values.map((value, idx) => (
-                      <span key={idx} className="text-gray-700 ml-1">
-                        {value}
-                        {idx < values.length - 1 && '; '}
-                      </span>
-                    ))}
-                  </div>
-                ))}
-              </div>
+            {/* Description - show in main view */}
+            {hasDescription && data.description && (
+              <p
+                className="text-center text-xs text-gray-600 leading-relaxed break-words overflow-hidden"
+                style={{
+                  display: "-webkit-box",
+                  WebkitLineClamp: 3,
+                  WebkitBoxOrient: "vertical",
+                }}
+              >
+                {data.description}
+              </p>
             )}
           </>
         )}
       </div>
+
+      {/* Metadata counts at bottom edge */}
+      {hasMetadata && data.metadata && (
+        <div className="absolute bottom-0 left-0 right-0 px-3 py-1.5 flex flex-wrap gap-x-2 gap-y-0.5 justify-center items-center border-t border-gray-300/30 bg-gray-50/50 rounded-b-lg">
+          {Object.entries(data.metadata).map(([fieldName, values]) => (
+            <span key={fieldName} className="text-[9px] text-gray-600 font-medium">
+              {fieldName}: {values.length}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 });
