@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, Maximize2, Minimize2 } from 'lucide-react';
 import { TreeState } from '../types';
 import CodeMirrorEditor from './CodeMirrorEditor';
 import { useTextEditor } from '../hooks/useTextEditor';
@@ -15,6 +15,8 @@ interface TextEditorPanelProps {
   onClose: () => void;
   onRecalculateLayout: () => void;
   canvasRef?: React.RefObject<{ panToNode: (nodeId: string) => void }>;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 const MIN_WIDTH = 300;
@@ -33,6 +35,8 @@ export default function TextEditorPanel({
   onClose,
   onRecalculateLayout,
   canvasRef,
+  isFullscreen = false,
+  onToggleFullscreen,
 }: TextEditorPanelProps) {
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
@@ -144,27 +148,47 @@ export default function TextEditorPanel({
   return (
     <aside
       ref={panelRef}
-      className="flex flex-col h-full bg-white border-r border-gray-200 shadow-lg"
-      style={{ width: `${width}px` }}
+      className={`flex flex-col bg-white border-r border-gray-200 shadow-lg ${
+        isFullscreen 
+          ? 'fixed inset-0 z-50' 
+          : 'h-full'
+      }`}
+      style={isFullscreen ? {} : { width: `${width}px` }}
       role="complementary"
       aria-label="Text editor panel"
     >
       {/* Panel Header */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
         <h2 className="text-sm font-semibold text-gray-800" id="text-editor-title">Text Editor</h2>
-        <button
-          onClick={onClose}
-          className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
-          aria-label="Close text editor panel"
-          title="Close text editor"
-        >
-          <X size={16} aria-hidden="true" />
-        </button>
+        <div className="flex items-center gap-2">
+          {onToggleFullscreen && (
+            <button
+              onClick={onToggleFullscreen}
+              className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+              aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            >
+              {isFullscreen ? (
+                <Minimize2 size={16} aria-hidden="true" />
+              ) : (
+                <Maximize2 size={16} aria-hidden="true" />
+              )}
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+            aria-label="Close text editor panel"
+            title="Close text editor"
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
       </header>
 
       {/* Text Editor */}
       <main 
-        className="flex-1 overflow-hidden" 
+        className="flex-1 overflow-auto" 
         role="main"
         aria-labelledby="text-editor-title"
       >
@@ -222,29 +246,31 @@ export default function TextEditorPanel({
         </div>
       </footer>
 
-      {/* Resize Handle */}
-      <button
-        className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-400 transition-colors focus:outline-none focus:bg-blue-500 focus:w-2 ${
-          isResizing ? 'bg-blue-500' : 'bg-transparent'
-        }`}
-        onMouseDown={handleResizeStart}
-        style={{ touchAction: 'none' }}
-        aria-label="Resize text editor panel. Use left and right arrow keys to adjust width."
-        aria-valuenow={width}
-        aria-valuemin={MIN_WIDTH}
-        aria-valuemax={MAX_WIDTH}
-        type="button"
-        onKeyDown={(e) => {
-          // Allow keyboard resizing with arrow keys
-          if (e.key === 'ArrowLeft') {
-            e.preventDefault();
-            setWidth(prev => Math.max(MIN_WIDTH, prev - 10));
-          } else if (e.key === 'ArrowRight') {
-            e.preventDefault();
-            setWidth(prev => Math.min(MAX_WIDTH, prev + 10));
-          }
-        }}
-      />
+      {/* Resize Handle - hidden in fullscreen mode */}
+      {!isFullscreen && (
+        <button
+          className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-400 transition-colors focus:outline-none focus:bg-blue-500 focus:w-2 ${
+            isResizing ? 'bg-blue-500' : 'bg-transparent'
+          }`}
+          onMouseDown={handleResizeStart}
+          style={{ touchAction: 'none' }}
+          aria-label="Resize text editor panel. Use left and right arrow keys to adjust width."
+          aria-valuenow={width}
+          aria-valuemin={MIN_WIDTH}
+          aria-valuemax={MAX_WIDTH}
+          type="button"
+          onKeyDown={(e) => {
+            // Allow keyboard resizing with arrow keys
+            if (e.key === 'ArrowLeft') {
+              e.preventDefault();
+              setWidth(prev => Math.max(MIN_WIDTH, prev - 10));
+            } else if (e.key === 'ArrowRight') {
+              e.preventDefault();
+              setWidth(prev => Math.min(MAX_WIDTH, prev + 10));
+            }
+          }}
+        />
+      )}
     </aside>
   );
 }

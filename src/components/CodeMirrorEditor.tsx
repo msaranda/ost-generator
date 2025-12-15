@@ -542,15 +542,21 @@ function lineNumbersTheme(): Extension {
 
 /**
  * Scrollbar theme extension
- * Ensures vertical scrollbar is visible
+ * Ensures vertical scrollbar is visible across all browsers
  */
 function scrollbarTheme(): Extension {
   return EditorView.theme({
     '.cm-scroller': {
       overflowY: 'auto',
+      overflowX: 'auto',
+      // Firefox scrollbar styling
+      scrollbarWidth: 'thin',
+      scrollbarColor: '#c1c1c1 #f1f1f1',
     },
+    // WebKit scrollbar styling (Chrome, Safari, Edge)
     '.cm-scroller::-webkit-scrollbar': {
       width: '12px',
+      height: '12px',
     },
     '.cm-scroller::-webkit-scrollbar-track': {
       backgroundColor: '#f1f1f1',

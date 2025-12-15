@@ -39,6 +39,7 @@ function App() {
   const [title, setTitle] = useState('Untitled');
   const [triggerEditNodeId, setTriggerEditNodeId] = useState<string | null>(null);
   const [showTextEditor, setShowTextEditor] = useState(false);
+  const [isEditorFullscreen, setIsEditorFullscreen] = useState(false);
 
   // Modal states
   const [showImportModal, setShowImportModal] = useState(false);
@@ -338,24 +339,26 @@ function App() {
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-canvas">
-      <Header
-        onImport={handleImport}
-        onExportJSON={handleExportJSON}
-        onExportImage={handleExportImage}
-        isExporting={isExporting}
-        treeData={tree}
-        isReadOnly={isReadOnly}
-        onNewTree={handleNewTree}
-        sessions={getSessions().sessions}
-        currentSessionId={currentSessionId}
-        onSessionSelect={handleSessionSelect}
-        title={title}
-        onTitleChange={handleTitleChange}
-        lastSaved={lastSaved}
-        onEditSharedTree={isReadOnly ? handleEditSharedTree : undefined}
-        showTextEditor={showTextEditor}
-        onToggleTextEditor={() => setShowTextEditor(!showTextEditor)}
-      />
+      {!isEditorFullscreen && (
+        <Header
+          onImport={handleImport}
+          onExportJSON={handleExportJSON}
+          onExportImage={handleExportImage}
+          isExporting={isExporting}
+          treeData={tree}
+          isReadOnly={isReadOnly}
+          onNewTree={handleNewTree}
+          sessions={getSessions().sessions}
+          currentSessionId={currentSessionId}
+          onSessionSelect={handleSessionSelect}
+          title={title}
+          onTitleChange={handleTitleChange}
+          lastSaved={lastSaved}
+          onEditSharedTree={isReadOnly ? handleEditSharedTree : undefined}
+          showTextEditor={showTextEditor}
+          onToggleTextEditor={() => setShowTextEditor(!showTextEditor)}
+        />
+      )}
 
       <main className="flex-1 relative overflow-hidden flex flex-row">
         <TextEditorPanel
@@ -368,39 +371,45 @@ function App() {
           onClose={() => setShowTextEditor(false)}
           onRecalculateLayout={recalculateLayout}
           canvasRef={canvasRef}
+          isFullscreen={isEditorFullscreen}
+          onToggleFullscreen={() => setIsEditorFullscreen(!isEditorFullscreen)}
         />
-        <div className="flex-1 relative overflow-hidden">
-          <OSTCanvas
-            ref={canvasRef}
-            tree={tree}
-            onUpdateNode={isReadOnly ? () => {} : updateNode}
-            onDeleteNode={isReadOnly ? () => {} : deleteNode}
-            onAddChild={isReadOnly ? () => {} : addNode}
-            onSelectNode={selectNode}
-            onRequestDelete={handleRequestDelete}
-            onMoveNode={isReadOnly ? () => {} : moveNode}
-            onEditingChange={setIsEditing}
-            onTextSaved={handleTextSaved}
-            zoom={zoom}
-            onZoomChange={setZoom}
-            layoutMode={layoutMode}
-            isReadOnly={isReadOnly}
-            triggerEditNodeId={triggerEditNodeId}
-            onClearTriggerEdit={handleClearTriggerEdit}
-          />
-        </div>
+        {!isEditorFullscreen && (
+          <div className="flex-1 relative overflow-hidden">
+            <OSTCanvas
+              ref={canvasRef}
+              tree={tree}
+              onUpdateNode={isReadOnly ? () => {} : updateNode}
+              onDeleteNode={isReadOnly ? () => {} : deleteNode}
+              onAddChild={isReadOnly ? () => {} : addNode}
+              onSelectNode={selectNode}
+              onRequestDelete={handleRequestDelete}
+              onMoveNode={isReadOnly ? () => {} : moveNode}
+              onEditingChange={setIsEditing}
+              onTextSaved={handleTextSaved}
+              zoom={zoom}
+              onZoomChange={setZoom}
+              layoutMode={layoutMode}
+              isReadOnly={isReadOnly}
+              triggerEditNodeId={triggerEditNodeId}
+              onClearTriggerEdit={handleClearTriggerEdit}
+            />
+          </div>
+        )}
       </main>
 
-      <Footer
-        zoom={zoom}
-        onFitView={handleFitView}
-        onZoomIn={handleZoomIn}
-        onZoomOut={handleZoomOut}
-        lastSaved={lastSaved}
-        layoutMode={layoutMode}
-        onToggleLayoutMode={handleToggleLayoutMode}
-        isReadOnly={isReadOnly}
-      />
+      {!isEditorFullscreen && (
+        <Footer
+          zoom={zoom}
+          onFitView={handleFitView}
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          lastSaved={lastSaved}
+          layoutMode={layoutMode}
+          onToggleLayoutMode={handleToggleLayoutMode}
+          isReadOnly={isReadOnly}
+        />
+      )}
 
       {/* Modals */}
       <ImportModal
