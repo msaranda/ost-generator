@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { X, Maximize2, Minimize2 } from 'lucide-react';
 import { TreeState } from '../types';
-import CodeMirrorEditor from './CodeMirrorEditor';
+import CodeMirrorEditor, { CodeMirrorEditorHandle } from './CodeMirrorEditor';
 import { useTextEditor } from '../hooks/useTextEditor';
 import { useTreeSerializer } from '../hooks/useTreeSerializer';
 import NodePreviewWindow from './NodePreviewWindow';
@@ -44,6 +44,7 @@ export default function TextEditorPanel({
   const [nodeLineMap, setNodeLineMap] = useState<Record<string, number>>({});
   
   const panelRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<CodeMirrorEditorHandle>(null);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
 
@@ -68,38 +69,70 @@ export default function TextEditorPanel({
     isReadOnly,
   });
 
+  // Stable callback for serializer to update text editor
+  const handleTextUpdateFromSerializer = useCallback((text: string) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TextEditorPanel.tsx:73',message:'handleTextUpdateFromSerializer called',data:{textLength:text.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
+    setTextContent(text);
+  }, [setTextContent]);
+
   // Tree serializer hook - handles tree changes to text
   const { nodeLineMap: serializedNodeLineMap } = useTreeSerializer({
     tree,
-    onTextUpdate: (text) => {
-      setTextContent(text);
-    },
+    onTextUpdate: handleTextUpdateFromSerializer,
   });
 
-  // Update node line map - prefer parsed map if available, otherwise use serialized
+  // Update node line map - always prefer parsed map when available, only fall back to serialized when parsed is empty
   const prevParsedRef = useRef<string>('');
   const prevSerializedRef = useRef<string>('');
   
   useEffect(() => {
     const parsedKeys = Object.keys(parsedNodeLineMap);
     const serializedKeys = Object.keys(serializedNodeLineMap);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TextEditorPanel.tsx:84',message:'nodeLineMap update effect triggered',data:{parsedKeysCount:parsedKeys.length,serializedKeysCount:serializedKeys.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     
+    // Always prefer parsed map if it has entries (even if serialized also has entries)
+    // This ensures real-time text changes are reflected correctly
     if (parsedKeys.length > 0) {
       // Only update if the content actually changed
       const parsedStr = JSON.stringify(parsedNodeLineMap);
       if (parsedStr !== prevParsedRef.current) {
         prevParsedRef.current = parsedStr;
         setNodeLineMap(parsedNodeLineMap);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TextEditorPanel.tsx:95',message:'nodeLineMap updated from parsed',data:{parsedKeysCount:parsedKeys.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
       }
     } else if (serializedKeys.length > 0) {
+      // Only fall back to serialized when parsed map is empty
       // Only update if the content actually changed
       const serializedStr = JSON.stringify(serializedNodeLineMap);
       if (serializedStr !== prevSerializedRef.current) {
         prevSerializedRef.current = serializedStr;
         setNodeLineMap(serializedNodeLineMap);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TextEditorPanel.tsx:103',message:'nodeLineMap updated from serialized',data:{serializedKeysCount:serializedKeys.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
       }
     }
   }, [parsedNodeLineMap, serializedNodeLineMap]);
+  
+  // Scroll to selected node's line when selectedNodeId changes (from canvas click)
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TextEditorPanel.tsx:108',message:'scrollToLine effect triggered',data:{selectedNodeId,hasLineMap:!!nodeLineMap[selectedNodeId],nodeLineMapSize:Object.keys(nodeLineMap).length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
+    if (selectedNodeId && nodeLineMap[selectedNodeId] && editorRef.current) {
+      const lineNumber = nodeLineMap[selectedNodeId];
+      // Use setTimeout to ensure the editor is ready and DOM is updated
+      setTimeout(() => {
+        editorRef.current?.scrollToLine(lineNumber);
+      }, 0);
+    }
+  }, [selectedNodeId, nodeLineMap]);
 
   // Handle resize start
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -353,6 +386,7 @@ export default function TextEditorPanel({
         aria-labelledby="text-editor-title"
       >
         <CodeMirrorEditor
+          ref={editorRef}
           value={textContent}
           onChange={handleTextChange}
           onCursorChange={handleCursorChange}

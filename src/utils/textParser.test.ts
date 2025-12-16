@@ -168,4 +168,38 @@ describe('Property 17: Parser remains pure', () => {
       expect(opportunityNode?.description).toBe('This is a quoted description');
     }
   });
+
+  it('should parse sub-notes as children, not metadata', () => {
+    const text = `O: Test outcome
+  OP: Test opportunity
+    Evidence: This is evidence
+    SU: This is a sub-opportunity
+      Problem: Sub-opportunity problem
+      S: This is a solution`;
+
+    const result = parseText(text);
+    
+    expect(result.success).toBe(true);
+    if (result.tree) {
+      const nodes = Object.values(result.tree.nodes);
+      const opportunityNode = nodes.find(n => n.type === 'opportunity');
+      const subOpportunityNode = nodes.find(n => n.type === 'sub-opportunity');
+      const solutionNode = nodes.find(n => n.type === 'solution');
+      
+      expect(opportunityNode).toBeDefined();
+      expect(opportunityNode?.metadata?.['Evidence']).toEqual(['This is evidence']);
+      // Sub-opportunity should be a child, not metadata
+      expect(opportunityNode?.children.length).toBeGreaterThan(0);
+      expect(opportunityNode?.children).toContain(subOpportunityNode?.id);
+      expect(subOpportunityNode).toBeDefined();
+      expect(subOpportunityNode?.content).toBe('This is a sub-opportunity');
+      expect(subOpportunityNode?.parentId).toBe(opportunityNode?.id);
+      // Sub-opportunity should have its own metadata
+      expect(subOpportunityNode?.metadata?.['Problem']).toEqual(['Sub-opportunity problem']);
+      // Solution should be a child of sub-opportunity
+      expect(solutionNode).toBeDefined();
+      expect(solutionNode?.parentId).toBe(subOpportunityNode?.id);
+      expect(subOpportunityNode?.children).toContain(solutionNode?.id);
+    }
+  });
 });

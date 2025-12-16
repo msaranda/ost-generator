@@ -45,20 +45,23 @@ const VALID_CHILDREN: Record<NodeType, NodeType[]> = {
   'sub-opportunity': ['solution'],
 };
 
-// Metadata field prefixes
-const METADATA_PREFIXES = ['Evidence:', 'Problem:', 'Supporting Data:', 'Impact:', 'Effort:'];
-
 /**
  * Check if a line is a metadata field
+ * Supports any label: content pattern where label contains alphanumeric characters, spaces, and underscores
  */
 function isMetadataField(line: string): { isMetadata: boolean; fieldName: string | null; value: string } {
   const trimmed = line.trim();
-  for (const prefix of METADATA_PREFIXES) {
-    if (trimmed.startsWith(prefix)) {
-      const value = trimmed.substring(prefix.length).trim();
-      return { isMetadata: true, fieldName: prefix.replace(':', ''), value };
-    }
+  // Match pattern: label: content where label is alphanumeric, spaces, underscores
+  // Pattern: ^([A-Za-z0-9_\s]+):\s*(.+)$
+  const metadataPattern = /^([A-Za-z0-9_\s]+):\s*(.+)$/;
+  const match = trimmed.match(metadataPattern);
+  
+  if (match) {
+    const fieldName = match[1].trim();
+    const value = match[2].trim();
+    return { isMetadata: true, fieldName, value };
   }
+  
   return { isMetadata: false, fieldName: null, value: '' };
 }
 
@@ -210,11 +213,23 @@ export function parseText(text: string): ParseResult {
 
     const indentLevel = getIndentLevel(line);
     const { prefix, content, nodeType } = parseLine(line);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'textParser.ts:215',message:'parsing line',data:{lineNumber:context.currentLine,indentLevel,nodeType,prefix,content:content.substring(0,50),lastNodeType:lastNode?.type,lastNodeIndent,hasLastNode:lastNode!==null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
 
     // Check if this is a metadata field, description, or continuation line for the last node
-    if (lastNode !== null && lastNodeIndent >= 0 && indentLevel > lastNodeIndent) {
-      // Check for metadata field first
+    // CRITICAL: Check if this is a node line FIRST - node lines should NEVER be treated as metadata
+    // Even if they match the metadata pattern (like "OP: Opportunity 1"), they are nodes, not metadata
+    const shouldCheckMetadata = lastNode !== null && lastNodeIndent >= 0 && indentLevel > lastNodeIndent && nodeType === null;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'textParser.ts:220',message:'metadata check condition',data:{shouldCheckMetadata,hasLastNode:lastNode!==null,lastNodeIndent,indentLevel,isMoreIndented:indentLevel>lastNodeIndent,nodeTypeIsNull:nodeType===null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    if (shouldCheckMetadata) {
+      // Not a node line - check for metadata field
       const metadataCheck = isMetadataField(line);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'textParser.ts:222',message:'checking metadata field',data:{lineNumber:context.currentLine,isMetadata:metadataCheck.isMetadata,fieldName:metadataCheck.fieldName,value:metadataCheck.value?.substring(0,50)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       if (metadataCheck.isMetadata && metadataCheck.fieldName) {
         // Initialize metadata object if it doesn't exist
         if (!lastNode.metadata) {
@@ -225,6 +240,9 @@ export function parseText(text: string): ParseResult {
           lastNode.metadata[metadataCheck.fieldName] = [];
         }
         lastNode.metadata[metadataCheck.fieldName].push(metadataCheck.value);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'textParser.ts:232',message:'added metadata to node',data:{lineNumber:context.currentLine,nodeId:lastNode.id,nodeType:lastNode.type,fieldName:metadataCheck.fieldName},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         continue;
       }
       
@@ -253,6 +271,9 @@ export function parseText(text: string): ParseResult {
 
     // Validate prefix
     if (!nodeType) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'textParser.ts:260',message:'nodeType is null - adding error',data:{lineNumber:context.currentLine,line:line.substring(0,50),indentLevel,lastNodeType:lastNode?.type,lastNodeIndent},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       context.errors.push({
         line: context.currentLine,
         column: indentLevel,
@@ -346,6 +367,9 @@ export function parseText(text: string): ParseResult {
       context.nodeStack.push({ node, indentLevel });
       lastNode = node;
       lastNodeIndent = indentLevel;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'textParser.ts:352',message:'created child node',data:{lineNumber:context.currentLine,nodeId,nodeType,parentId:parent.id,parentType:parent.type,indentLevel,parentChildrenCount:parent.children.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
     }
   }
 
@@ -361,6 +385,9 @@ export function parseText(text: string): ParseResult {
 
   // Return result
   if (context.errors.length > 0) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'textParser.ts:368',message:'parseText returning errors',data:{errorCount:context.errors.length,nodeCount:Object.keys(context.nodeMap).length,errors:context.errors.map(e=>({line:e.line,type:e.type,message:e.message}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     return {
       success: false,
       errors: context.errors,
@@ -368,6 +395,9 @@ export function parseText(text: string): ParseResult {
   }
 
   if (!rootId) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'textParser.ts:380',message:'parseText no rootId',data:{nodeCount:Object.keys(context.nodeMap).length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     return {
       success: false,
       errors: [{
@@ -379,6 +409,12 @@ export function parseText(text: string): ParseResult {
     };
   }
 
+  const nodeCount = Object.keys(context.nodeMap).length;
+  const nodesWithMetadata = Object.values(context.nodeMap).filter(n => n.metadata && Object.keys(n.metadata).length > 0).length;
+  const nodesWithChildren = Object.values(context.nodeMap).filter(n => n.children.length > 0).length;
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'textParser.ts:392',message:'parseText success',data:{nodeCount,rootId,nodesWithMetadata,nodesWithChildren,nodeTypes:Object.values(context.nodeMap).map(n=>n.type)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
   return {
     success: true,
     tree: {

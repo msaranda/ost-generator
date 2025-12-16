@@ -1047,6 +1047,9 @@ export interface CodeMirrorEditorHandle {
   
   // Set cursor position
   setCursorPosition: (line: number, column: number) => void;
+  
+  // Scroll to a specific line number and center it
+  scrollToLine: (lineNumber: number) => void;
 }
 
 const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProps>(function CodeMirrorEditor({
@@ -1062,6 +1065,11 @@ const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProp
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const [isClient, setIsClient] = useState(false);
+  // Track if user is actively editing to prevent external updates from overwriting edits
+  const isUserEditingRef = useRef(false);
+  const lastUserEditTimeRef = useRef(0);
+  // Track the last value that came from CodeMirror (user typing) to prevent loops
+  const lastCodeMirrorValueRef = useRef<string>('');
 
   // Expose imperative handle for external text updates
   useImperativeHandle(ref, () => ({
@@ -1138,6 +1146,24 @@ const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProp
         console.warn('Failed to set cursor position:', { line, column }, e);
       }
     },
+    
+    scrollToLine: (lineNumber: number) => {
+      if (!viewRef.current) return;
+      
+      const view = viewRef.current;
+      const doc = view.state.doc;
+      
+      try {
+        if (lineNumber >= 1 && lineNumber <= doc.lines) {
+          const line = doc.line(lineNumber);
+          view.dispatch({
+            effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
+          });
+        }
+      } catch (e) {
+        console.warn('Failed to scroll to line:', lineNumber, e);
+      }
+    },
   }), []);
 
 
@@ -1169,7 +1195,50 @@ const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProp
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             const newValue = update.state.doc.toString();
-            onChange(newValue);
+            const isUserInitiated = update.transactions.some(t => t.isUserEvent);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CodeMirrorEditor.tsx:1191',message:'CodeMirror docChanged',data:{newValueLength:newValue.length,isUserInitiated,lastCodeMirrorValueLength:lastCodeMirrorValueRef.current.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
+            
+            // Only process if this is a user-initiated change OR if the value actually changed
+            // Also check if this update came from our external update (marked with userEvent: 'external.update')
+            const isExternalUpdate = update.transactions.some(t => t.userEvent === 'external.update');
+            
+            // CRITICAL: Always process user-initiated changes, even if value matches lastCodeMirrorValueRef
+            // This ensures user input is never lost even if serializer just updated the editor
+            if (isUserInitiated) {
+              // User typed - always process, regardless of lastCodeMirrorValueRef
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CodeMirrorEditor.tsx:1209',message:'CodeMirror user-initiated change - forcing onChange',data:{newValueLength:newValue.length,lastCodeMirrorValueLength:lastCodeMirrorValueRef.current.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+              // #endregion
+            }
+            
+            if (isUserInitiated || (newValue !== lastCodeMirrorValueRef.current && !isExternalUpdate)) {
+              // Mark that user is editing (or document changed from external source)
+              if (isUserInitiated) {
+                isUserEditingRef.current = true;
+                lastUserEditTimeRef.current = Date.now();
+                // Reset flag after a longer delay to prevent race conditions
+                setTimeout(() => {
+                  isUserEditingRef.current = false;
+                }, 3000);
+              }
+              lastCodeMirrorValueRef.current = newValue;
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CodeMirrorEditor.tsx:1217',message:'CodeMirror calling onChange',data:{newValueLength:newValue.length,isUserInitiated,hasOnChange:!!onChange},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+              // #endregion
+              onChange(newValue);
+            } else if (isExternalUpdate) {
+              // External update - just update the ref, don't call onChange to prevent loop
+              lastCodeMirrorValueRef.current = newValue;
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CodeMirrorEditor.tsx:1218',message:'CodeMirror docChanged from external update - skipping onChange',data:{newValueLength:newValue.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+              // #endregion
+            } else {
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CodeMirrorEditor.tsx:1226',message:'CodeMirror docChanged - NOT calling onChange (condition failed)',data:{newValueLength:newValue.length,isUserInitiated,isExternalUpdate,newValueEqualsLast:newValue===lastCodeMirrorValueRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+              // #endregion
+            }
           }
           
           // Track cursor position changes - emit on any selection change
@@ -1229,19 +1298,75 @@ const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProp
   }, [isClient]); // Only run on mount
 
   // Update editor when value changes externally
+  // CRITICAL: This effect should ONLY run for external updates (serializer), NOT for user edits
   useEffect(() => {
     if (!viewRef.current || !isClient) return;
     
     const currentValue = viewRef.current.state.doc.toString();
-    if (currentValue !== value) {
-      viewRef.current.dispatch({
-        changes: {
-          from: 0,
-          to: currentValue.length,
-          insert: value,
-        },
-      });
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CodeMirrorEditor.tsx:1266',message:'value update effect triggered',data:{currentValueLength:currentValue.length,newValueLength:value.length,valuesEqual:currentValue===value,lastCodeMirrorValueLength:lastCodeMirrorValueRef.current.length,isUserEditing:isUserEditingRef.current,timeSinceLastEdit:Date.now()-lastUserEditTimeRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    
+    // Skip if values are already equal
+    if (currentValue === value) {
+      return;
     }
+    
+    // CRITICAL: Skip if this value matches what CodeMirror just emitted (prevents loops)
+    // This means the value prop update came from CodeMirror's onChange, not from external source
+    if (value === lastCodeMirrorValueRef.current) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CodeMirrorEditor.tsx:1278',message:'value update blocked - matches last CodeMirror value (loop prevention)',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      return;
+    }
+    
+    // CRITICAL: NEVER update if user is editing or recently edited (within last 3000ms)
+    // This prevents any external updates from overwriting user edits
+    const timeSinceLastEdit = Date.now() - lastUserEditTimeRef.current;
+    if (isUserEditingRef.current || timeSinceLastEdit < 3000) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CodeMirrorEditor.tsx:1288',message:'value update blocked - user editing or recent edit',data:{isUserEditing:isUserEditingRef.current,timeSinceLastEdit},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      return;
+    }
+    
+    // Additional safety: Only update if the new value is significantly different
+    // This prevents small race condition updates
+    const lengthDiff = Math.abs(currentValue.length - value.length);
+    const maxLength = Math.max(currentValue.length, value.length);
+    if (maxLength > 0 && lengthDiff < 10 && currentValue !== value) {
+      // Very small change, might be a race condition - skip it
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CodeMirrorEditor.tsx:1298',message:'value update blocked - very small change (race condition)',data:{lengthDiff,maxLength},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      return;
+    }
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CodeMirrorEditor.tsx:1305',message:'dispatching value update to CodeMirror',data:{currentValueLength:currentValue.length,newValueLength:value.length,lengthDiff,currentValueStart:currentValue.substring(0,50),newValueStart:value.substring(0,50)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    // Update lastCodeMirrorValueRef BEFORE dispatching to prevent immediate re-trigger
+    lastCodeMirrorValueRef.current = value;
+    
+    // CRITICAL: Check if the new value is actually different and reasonable
+    // If currentValue is much larger than newValue, something is wrong - don't replace
+    if (currentValue.length > value.length * 2 && currentValue.length > 1000) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/6effda24-82ac-4bf0-b7cc-4645b8b009a3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CodeMirrorEditor.tsx:1312',message:'value update BLOCKED - current value suspiciously large (possible duplication)',data:{currentValueLength:currentValue.length,newValueLength:value.length,ratio:currentValue.length/value.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      return;
+    }
+    
+    viewRef.current.dispatch({
+      changes: {
+        from: 0,
+        to: currentValue.length,
+        insert: value,
+      },
+      // Mark as non-user event to prevent triggering onChange loop
+      userEvent: 'external.update',
+    });
   }, [value, isClient]);
 
   // Update diagnostics when they change

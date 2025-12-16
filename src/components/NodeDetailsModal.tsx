@@ -102,7 +102,7 @@ export default function NodeDetailsModal({
                       key={`${fieldName}-${idx}`}
                       className="inline-block px-2 py-1 text-xs text-gray-700 bg-gray-50 rounded border border-gray-200"
                     >
-                      <span className="text-gray-500 font-medium">{fieldName}:</span> {value}
+                      <span className="text-gray-500 font-bold">{fieldName}:</span> {value}
                     </span>
                   ))
                 )}
